@@ -1,0 +1,66 @@
+{
+  "format": "cgb",
+  "version": "0.1",
+  "metadata": {
+    "generator": "CubeGB v0.1 (hand-authored sample)",
+    "source_image": null,
+    "created_at": "2026-06-22T00:00:00Z",
+    "up_axis": "Y"
+  },
+  "units": "meter",
+  "primitives": [
+    {
+      "id": "body",
+      "name": "house_body",
+      "type": "cube",
+      "transform": {
+        "position": [0.0, 1.5, 0.0],
+        "rotation_euler": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "params": { "size": [4.0, 3.0, 5.0] },
+      "material": { "color": [0.85, 0.82, 0.75], "name": "wall" },
+      "parent": null
+    },
+    {
+      "id": "roof",
+      "name": "roof",
+      "type": "cone",
+      "transform": {
+        "position": [0.0, 3.9, 0.0],
+        "rotation_euler": [0.0, 0.7853981634, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "params": { "radius": 3.4, "height": 1.8, "segments": 4 },
+      "material": { "color": [0.55, 0.18, 0.15], "name": "roof_tile" },
+      "parent": "body"
+    },
+    {
+      "id": "chimney",
+      "name": "chimney",
+      "type": "cube",
+      "transform": {
+        "position": [1.2, 4.2, -1.4],
+        "rotation_euler": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "params": { "size": [0.5, 1.4, 0.5] },
+      "material": { "color": [0.4, 0.3, 0.28], "name": "brick" },
+      "parent": "body"
+    },
+    {
+      "id": "door",
+      "name": "door",
+      "type": "cube",
+      "transform": {
+        "position": [0.0, 1.05, 2.51],
+        "rotation_euler": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "params": { "size": [0.9, 2.1, 0.08] },
+      "material": { "color": [0.35, 0.22, 0.12], "name": "door_wood" },
+      "parent": "body"
+    }
+  ],
+  "operations": []
+}

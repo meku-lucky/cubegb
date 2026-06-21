@@ -1,0 +1,175 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/cubegb/cubegb/blob/main/cgb/schema.json",
+  "title": "CubeGB .cgb format",
+  "description": "Parametric primitive blockout format (source of truth). Version 0.1.",
+  "type": "object",
+  "required": ["format", "version", "units", "primitives"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "cgb"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "generator": { "type": "string" },
+        "source_image": { "type": ["string", "null"] },
+        "created_at": { "type": ["string", "null"] },
+        "up_axis": { "type": "string", "enum": ["X", "Y", "Z"] }
+      }
+    },
+    "units": {
+      "type": "string",
+      "enum": ["meter", "centimeter", "millimeter", "inch", "foot"]
+    },
+    "primitives": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/primitive" }
+    },
+    "operations": {
+      "type": "array",
+      "description": "CSG operations (union/difference/intersection). Empty in v0.1 (unimplemented).",
+      "items": { "$ref": "#/definitions/operation" }
+    }
+  },
+  "definitions": {
+    "vec3": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "color": {
+      "type": "array",
+      "items": { "type": "number", "minimum": 0, "maximum": 1 },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "transform": {
+      "type": "object",
+      "required": ["position", "rotation_euler", "scale"],
+      "additionalProperties": false,
+      "properties": {
+        "position": { "$ref": "#/definitions/vec3" },
+        "rotation_euler": {
+          "$ref": "#/definitions/vec3",
+          "description": "Radians, XYZ order."
+        },
+        "scale": { "$ref": "#/definitions/vec3" }
+      }
+    },
+    "material": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "color": { "$ref": "#/definitions/color" },
+        "name": { "type": "string" }
+      }
+    },
+    "primitive": {
+      "type": "object",
+      "required": ["id", "type", "transform", "params"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["cube", "sphere", "cylinder", "cone"]
+        },
+        "transform": { "$ref": "#/definitions/transform" },
+        "params": { "type": "object" },
+        "material": { "$ref": "#/definitions/material" },
+        "parent": { "type": ["string", "null"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "cube" } } },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": ["size"],
+                "additionalProperties": false,
+                "properties": {
+                  "size": { "$ref": "#/definitions/vec3" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "sphere" } } },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": ["radius"],
+                "additionalProperties": false,
+                "properties": {
+                  "radius": { "type": "number", "exclusiveMinimum": 0 },
+                  "segments": { "type": "integer", "minimum": 3 }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "cylinder" } } },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": ["radius", "height"],
+                "additionalProperties": false,
+                "properties": {
+                  "radius": { "type": "number", "exclusiveMinimum": 0 },
+                  "height": { "type": "number", "exclusiveMinimum": 0 },
+                  "segments": { "type": "integer", "minimum": 3 }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "cone" } } },
+          "then": {
+            "properties": {
+              "params": {
+                "type": "object",
+                "required": ["radius", "height"],
+                "additionalProperties": false,
+                "properties": {
+                  "radius": { "type": "number", "exclusiveMinimum": 0 },
+                  "height": { "type": "number", "exclusiveMinimum": 0 },
+                  "segments": { "type": "integer", "minimum": 3 }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "operation": {
+      "type": "object",
+      "required": ["type", "operands"],
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["union", "difference", "intersection"]
+        },
+        "operands": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

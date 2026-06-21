@@ -1,0 +1,50 @@
+# ---------------------------------------------------------------------------
+# Agent-only documentation — NOT published to the public repo.
+# (Maintainer owns these lines and may adjust them; see AGENTS.md.)
+# `docs-agents/` is agent-only; `docs/` is published.
+/AGENTS.md
+/CLAUDE.md
+/docs-agents/
+# ---------------------------------------------------------------------------
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Model weights / large artifacts (download separately — see docs/recognition.md)
+*.pth
+*.pt
+*.onnx
+*.ckpt
+*.safetensors
+
+# Local output dir (ComfyUI Save/Bake fallback when run outside ComfyUI)
+/output/
+
+# Generated meshes / debug output (the .cgb source is committed; bakes are not)
+*.glb
+*.gltf
+*.obj
+*.ply
+!samples/**
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

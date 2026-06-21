@@ -1,0 +1,19 @@
+# Heavy ML stack for the recognition pipeline (Phase 4-5).
+# Install on top of requirements.txt. A CUDA-capable GPU is recommended but not
+# required; CPU inference works for small images, just slowly.
+#
+#   pip install -r requirements.txt -r requirements-recognition.txt
+#
+# Pretrained model WEIGHTS are downloaded separately - see docs/comfyui.md and
+# docs/recognition.md for SAM and Depth Anything V2 checkpoint instructions.
+-r requirements.txt
+
+torch>=2.0
+torchvision>=0.15
+opencv-python>=4.8
+pillow>=10.0
+open3d>=0.17
+
+# Segment Anything (Apache-2.0). Depth Anything V2 is typically vendored or
+# installed from its repo; see docs/recognition.md.
+segment-anything>=1.0

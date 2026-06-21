@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cubegb"
+version = "0.1.0"
+description = "Image-to-blockout: reconstruct an image as editable parametric 3D primitives (.cgb)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "CubeGB contributors" }]
+keywords = ["3d", "blockout", "primitives", "comfyui", "blender", "image-to-3d"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Multimedia :: Graphics :: 3D Modeling",
+]
+
+# Core dependencies: enough for the .cgb format, baker, and viewer tooling.
+# The heavy recognition stack (torch / SAM / Depth Anything) is an optional extra.
+dependencies = [
+  "jsonschema>=4.0",
+  "numpy>=1.23",
+  "scipy>=1.10",
+  "trimesh>=4.0",
+  "pygltflib>=1.16",
+]
+
+[project.optional-dependencies]
+recognition = [
+  "torch>=2.0",
+  "torchvision>=0.15",
+  "opencv-python>=4.8",
+  "pillow>=10.0",
+  "scipy>=1.10",
+  "open3d>=0.17",
+  "segment-anything>=1.0",
+]
+dev = [
+  "pytest>=7.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/cubegb/cubegb"
+Repository = "https://github.com/cubegb/cubegb"
+
+[project.scripts]
+cgb-bake = "bake.baker:main"
+
+[tool.setuptools]
+packages = ["cgb", "bake", "recognition", "comfyui_nodes"]
+
+[tool.setuptools.package-data]
+cgb = ["schema.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

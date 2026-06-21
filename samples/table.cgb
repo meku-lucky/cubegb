@@ -1,0 +1,79 @@
+{
+  "format": "cgb",
+  "version": "0.1",
+  "metadata": {
+    "generator": "CubeGB v0.1 (hand-authored sample)",
+    "source_image": null,
+    "created_at": "2026-06-22T00:00:00Z",
+    "up_axis": "Y"
+  },
+  "units": "meter",
+  "primitives": [
+    {
+      "id": "top",
+      "name": "table_top",
+      "type": "cube",
+      "transform": {
+        "position": [0.0, 0.74, 0.0],
+        "rotation_euler": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "params": { "size": [1.2, 0.05, 0.8] },
+      "material": { "color": [0.55, 0.38, 0.22], "name": "wood" },
+      "parent": null
+    },
+    {
+      "id": "leg_fl",
+      "name": "leg_front_left",
+      "type": "cylinder",
+      "transform": {
+        "position": [-0.55, 0.36, 0.35],
+        "rotation_euler": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "params": { "radius": 0.03, "height": 0.72, "segments": 16 },
+      "material": { "color": [0.45, 0.3, 0.18], "name": "wood_dark" },
+      "parent": null
+    },
+    {
+      "id": "leg_fr",
+      "name": "leg_front_right",
+      "type": "cylinder",
+      "transform": {
+        "position": [0.55, 0.36, 0.35],
+        "rotation_euler": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "params": { "radius": 0.03, "height": 0.72, "segments": 16 },
+      "material": { "color": [0.45, 0.3, 0.18], "name": "wood_dark" },
+      "parent": null
+    },
+    {
+      "id": "leg_bl",
+      "name": "leg_back_left",
+      "type": "cylinder",
+      "transform": {
+        "position": [-0.55, 0.36, -0.35],
+        "rotation_euler": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "params": { "radius": 0.03, "height": 0.72, "segments": 16 },
+      "material": { "color": [0.45, 0.3, 0.18], "name": "wood_dark" },
+      "parent": null
+    },
+    {
+      "id": "leg_br",
+      "name": "leg_back_right",
+      "type": "cylinder",
+      "transform": {
+        "position": [0.55, 0.36, -0.35],
+        "rotation_euler": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      },
+      "params": { "radius": 0.03, "height": 0.72, "segments": 16 },
+      "material": { "color": [0.45, 0.3, 0.18], "name": "wood_dark" },
+      "parent": null
+    }
+  ],
+  "operations": []
+}

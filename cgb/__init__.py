@@ -1,0 +1,51 @@
+"""CubeGB ``.cgb`` parametric primitive format: IO, builders, and validation."""
+
+from .io import (
+    DEFAULT_SEGMENTS,
+    FORMAT,
+    GENERATOR,
+    PRIMITIVE_TYPES,
+    VERSION,
+    add_primitive,
+    cone,
+    cube,
+    cylinder,
+    dumps,
+    load,
+    loads,
+    make_transform,
+    new_document,
+    save,
+    sphere,
+)
+from .validate import (
+    ValidationError,
+    is_valid,
+    validate,
+    validate_schema,
+    validate_semantics,
+)
+
+__all__ = [
+    "FORMAT",
+    "VERSION",
+    "GENERATOR",
+    "PRIMITIVE_TYPES",
+    "DEFAULT_SEGMENTS",
+    "load",
+    "loads",
+    "save",
+    "dumps",
+    "new_document",
+    "make_transform",
+    "cube",
+    "sphere",
+    "cylinder",
+    "cone",
+    "add_primitive",
+    "validate",
+    "validate_schema",
+    "validate_semantics",
+    "is_valid",
+    "ValidationError",
+]

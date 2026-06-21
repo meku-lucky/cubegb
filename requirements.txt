@@ -1,0 +1,7 @@
+# Core dependencies for the .cgb format, validation, and the mesh baker.
+# For the image-recognition pipeline (Phase 4-5) install requirements-recognition.txt.
+jsonschema>=4.0
+numpy>=1.23
+scipy>=1.10
+trimesh>=4.0
+pygltflib>=1.16
