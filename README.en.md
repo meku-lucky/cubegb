@@ -68,6 +68,7 @@ cubegb/
 ├── bake/               # .cgb → glTF/GLB/OBJ baker (low-poly)
 ├── blender_addon/      # Blender importer add-on (editable primitives)
 ├── recognition/        # image → .cgb: SAM segmentation, depth, primitive fitting
+├── app/                # CubeGB Studio — all-in-one web GUI (FastAPI + three.js)
 ├── comfyui_nodes/      # ComfyUI custom nodes
 ├── samples/            # hand-authored .cgb examples (chair, table, building)
 ├── tests/              # pytest suite (format + baker)
@@ -92,8 +93,20 @@ Pretrained **model weights are downloaded separately** — see
 
 ## Quickstart
 
-**View a sample** — open [`viewer/index.html`](viewer/index.html) in a browser
-and drag `samples/chair.cgb` onto the page. See [docs/viewer.md](docs/viewer.md).
+**All-in-one GUI (CubeGB Studio)** — select an image → generate `.cgb` → view in
+3D → export, all on one page:
+
+```bash
+python -m pip install -r requirements.txt -r requirements-app.txt
+python -m app.server        # opens http://127.0.0.1:8000/ in your browser
+```
+
+The Generate step needs the recognition stack + model weights, but **loading,
+viewing, and exporting a `.cgb`** work with just the core. See [docs/studio.md](docs/studio.md).
+
+**View a sample (standalone viewer)** — open [`viewer/index.html`](viewer/index.html)
+in a browser and drag `samples/chair.cgb` onto the page (no server needed). See
+[docs/viewer.md](docs/viewer.md).
 
 **Bake a `.cgb` to a mesh:**
 
@@ -129,6 +142,7 @@ without any ML; Phases 4–6 add recognition and packaging.
 | 4 | segmentation (SAM) + depth (Depth Anything V2) | ✅ code (needs weights) |
 | 5 | primitive fitting & pose normalization → `.cgb` | ✅ code (needs weights) |
 | 6 | ComfyUI custom nodes | ✅ |
+| — | CubeGB Studio (all-in-one web GUI, beyond the original spec) | ✅ view/export tested |
 
 Run the test suite:
 
@@ -139,6 +153,7 @@ python -m pytest
 ## Documentation
 
 - [The `.cgb` format](docs/cgb-format.md) — spec & geometry conventions
+- [CubeGB Studio (all-in-one GUI)](docs/studio.md)
 - [Web viewer](docs/viewer.md)
 - [Mesh baker](docs/baker.md)
 - [Blender add-on](docs/blender-addon.md)

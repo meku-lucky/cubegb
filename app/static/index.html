@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CubeGB Studio</title>
+<style>
+  :root {
+    --bg: #15171c; --panel: #1f232b; --panel-2: #2a2f3a; --border: #353b47;
+    --text: #e6e9ef; --text-dim: #98a1b1; --accent: #5b9dff; --accent-2: #3f7fe0;
+    --ok: #4cc38a; --warn: #e0a13f; --err: #ff7a85;
+    --err-bg: #3a1f24; --err-border: #b3404c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg);
+    color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; font-size: 14px; }
+  #app { display: flex; height: 100vh; }
+
+  /* ---- sidebar ---- */
+  #sidebar { width: 340px; flex: 0 0 340px; height: 100%; display: flex;
+    flex-direction: column; background: var(--panel); border-right: 1px solid var(--border); }
+  #sidebar header { padding: 16px 18px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px; }
+  #sidebar header .logo { width: 22px; height: 22px; border-radius: 5px;
+    background: linear-gradient(135deg, var(--accent), #8a5bff); box-shadow: 0 0 10px rgba(91,157,255,.5); }
+  #sidebar header h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: .2px; }
+  #sidebar header .sub { font-size: 11px; color: var(--text-dim); }
+  .scroll { flex: 1; overflow-y: auto; padding: 14px 18px 24px; }
+
+  .step { margin-bottom: 18px; }
+  .step-title { font-size: 11px; text-transform: uppercase; letter-spacing: .7px;
+    color: var(--text-dim); margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
+  .step-title .n { display: inline-flex; align-items: center; justify-content: center;
+    width: 17px; height: 17px; border-radius: 50%; background: var(--panel-2);
+    color: var(--accent); font-size: 11px; font-weight: 700; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    width: 100%; padding: 9px 12px; border: 1px solid var(--accent-2); border-radius: 8px;
+    background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: background .15s, transform .05s; }
+  .btn:hover { background: var(--accent-2); }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.secondary { background: var(--panel-2); border-color: var(--border); color: var(--text); }
+  .btn.secondary:hover { background: #333a47; }
+  .btn-row { display: flex; gap: 8px; }
+  .btn-row .btn { width: auto; flex: 1; }
+
+  label.field { display: block; font-size: 11px; color: var(--text-dim); margin: 9px 0 3px; }
+  input[type=text], input[type=number], select { width: 100%; padding: 7px 9px;
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px;
+    color: var(--text); font-size: 12px; }
+  input::placeholder { color: #687284; }
+  details { margin-top: 10px; border: 1px solid var(--border); border-radius: 8px;
+    background: rgba(0,0,0,.12); }
+  details > summary { cursor: pointer; padding: 8px 11px; font-size: 12px; color: var(--text-dim); }
+  details[open] > summary { border-bottom: 1px solid var(--border); color: var(--text); }
+  details .inner { padding: 6px 11px 11px; }
+
+  #imgDrop { border: 2px dashed var(--border); border-radius: 10px; padding: 16px;
+    text-align: center; color: var(--text-dim); cursor: pointer; transition: border-color .15s, background .15s; }
+  #imgDrop:hover, #imgDrop.drag { border-color: var(--accent); background: rgba(91,157,255,.07); }
+  #imgPreview { max-width: 100%; max-height: 150px; border-radius: 8px; margin-top: 10px; display: none; }
+
+  #genStatus { font-size: 12px; margin-top: 9px; min-height: 16px; }
+  .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite;
+    vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .muted { color: var(--text-dim); }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); }
+
+  .cap-note { font-size: 11px; color: var(--text-dim); background: rgba(0,0,0,.18);
+    border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; margin-bottom: 12px; }
+
+  #primList { list-style: none; margin: 6px 0 0; padding: 0; }
+  #primList li { display: flex; align-items: center; gap: 9px; padding: 6px 8px;
+    border-radius: 7px; cursor: pointer; }
+  #primList li:hover { background: var(--panel-2); }
+  #primList li.active { background: rgba(91,157,255,.18); outline: 1px solid var(--accent); }
+  #primList .swatch { width: 13px; height: 13px; flex: 0 0 13px; border-radius: 4px;
+    border: 1px solid rgba(255,255,255,.18); }
+  #primList .name { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #primList .type { font-size: 10.5px; color: var(--text-dim); }
+  .empty { font-size: 12px; color: var(--text-dim); font-style: italic; padding: 4px 2px; }
+
+  /* ---- viewport ---- */
+  #viewport { position: relative; flex: 1; height: 100%; }
+  #vp3d { position: absolute; inset: 0; }
+  #vpHint { position: absolute; bottom: 12px; right: 14px; font-size: 11px;
+    color: var(--text-dim); pointer-events: none; }
+  #vpEmpty { position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px; color: var(--text-dim);
+    text-align: center; pointer-events: none; }
+  #vpEmpty .big { font-size: 17px; color: var(--text); }
+
+  /* ---- toast ---- */
+  #toast { position: absolute; bottom: 16px; left: 16px; max-width: 420px; display: none;
+    padding: 12px 14px; background: var(--err-bg); border: 1px solid var(--err-border);
+    border-radius: 10px; z-index: 60; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+  #toast.show { display: block; }
+  #toast .title { font-weight: 700; margin-bottom: 4px; color: var(--err); }
+  #toast .msg { font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+  #toast .close { position: absolute; top: 6px; right: 9px; cursor: pointer;
+    color: var(--text-dim); font-size: 16px; line-height: 1; }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <header>
+      <span class="logo"></span>
+      <div>
+        <h1>CubeGB Studio</h1>
+        <div class="sub">이미지 → .cgb → 3D 뷰 → 내보내기</div>
+      </div>
+    </header>
+    <div class="scroll">
+      <div id="capNote" class="cap-note">기능 확인 중…</div>
+
+      <!-- Step 1: image -->
+      <div class="step">
+        <p class="step-title"><span class="n">1</span> 이미지 선택</p>
+        <div id="imgDrop">
+          <div>이미지를 드래그하거나 클릭해서 선택</div>
+          <img id="imgPreview" alt="preview" />
+        </div>
+        <input id="imgInput" type="file" accept="image/*" style="display:none" />
+      </div>
+
+      <!-- Step 2: generate -->
+      <div class="step">
+        <p class="step-title"><span class="n">2</span> .cgb 생성</p>
+        <button id="genBtn" class="btn" disabled>생성 (Generate)</button>
+        <div id="genStatus"></div>
+        <details id="genOpts">
+          <summary>생성 옵션</summary>
+          <div class="inner">
+            <label class="field">SAM 체크포인트 경로</label>
+            <input id="samCkpt" type="text" placeholder="…/sam_vit_h_4b8939.pth" />
+            <label class="field">Depth 체크포인트 경로 (선택)</label>
+            <input id="depthCkpt" type="text" placeholder="비워두면 자동" />
+            <label class="field">디바이스</label>
+            <select id="device">
+              <option value="auto">auto</option>
+              <option value="cuda">cuda</option>
+              <option value="cpu">cpu</option>
+            </select>
+            <label class="field">SAM 모델 타입</label>
+            <select id="samType">
+              <option value="vit_h">vit_h</option>
+              <option value="vit_l">vit_l</option>
+              <option value="vit_b">vit_b</option>
+            </select>
+            <label class="field">최대 세그먼트 수</label>
+            <input id="maxSeg" type="number" value="12" min="1" max="64" />
+          </div>
+        </details>
+        <div class="btn-row" style="margin-top:10px">
+          <button id="loadBtn" class="btn secondary">.cgb 불러오기</button>
+        </div>
+        <input id="cgbInput" type="file" accept=".cgb,application/json" style="display:none" />
+      </div>
+
+      <!-- Primitives -->
+      <div class="step">
+        <p class="step-title">프리미티브 <span id="primCount" class="muted"></span></p>
+        <ul id="primList"></ul>
+        <div id="emptyMsg" class="empty">아직 모델이 없습니다.</div>
+      </div>
+
+      <!-- Step 3: export -->
+      <div class="step">
+        <p class="step-title"><span class="n">3</span> 내보내기</p>
+        <label class="field">파일 이름</label>
+        <input id="exportName" type="text" value="cubegb" />
+        <div class="btn-row" style="margin-top:10px">
+          <button id="dlCgb" class="btn secondary" disabled>.cgb</button>
+          <button id="dlGlb" class="btn secondary" disabled>.glb</button>
+          <button id="dlObj" class="btn secondary" disabled>.obj</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main id="viewport">
+    <div id="vp3d"></div>
+    <div id="vpEmpty">
+      <div class="big">3D 뷰</div>
+      <div>이미지로 생성하거나 .cgb를 불러오면 여기에 표시됩니다.</div>
+    </div>
+    <div id="vpHint">좌-드래그 회전 · 우-드래그 이동 · 휠 줌</div>
+    <div id="toast"><span class="close" id="toastClose">&times;</span>
+      <div class="title">오류</div><div class="msg" id="toastMsg"></div></div>
+  </main>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="/static/studio.js"></script>
+</body>
+</html>

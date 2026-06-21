@@ -1,0 +1,13 @@
+# CubeGB Studio — the all-in-one local web GUI (app/).
+# Install on top of the core requirements:
+#
+#   pip install -r requirements.txt -r requirements-app.txt
+#
+# The "Generate" step (image -> .cgb) additionally needs the recognition stack
+# (requirements-recognition.txt) plus model weights; viewing and exporting a
+# .cgb work with just core + this.
+-r requirements.txt
+
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9

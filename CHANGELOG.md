@@ -21,6 +21,8 @@ All notable changes to CubeGB are documented here. The format follows
   back-projection, and PCA-based primitive fitting → `.cgb`
   (`python -m recognition.fit`).
 - **ComfyUI nodes** — CubeGB Generate / Save / Bake / Preview.
-- Documentation and pytest suite (format + baker).
+- **CubeGB Studio** — all-in-one local web GUI (FastAPI + three.js):
+  image → `.cgb` → 3D view → export, on one page (`python -m app.server`).
+- Documentation and pytest suite (format + baker + Studio backend).
 
 [Unreleased]: https://github.com/cubegb/cubegb

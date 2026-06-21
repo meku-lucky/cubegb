@@ -66,6 +66,7 @@ cubegb/
 ├── bake/               # .cgb → glTF/GLB/OBJ 베이커 (저폴리)
 ├── blender_addon/      # Blender 임포터 애드온 (편집 가능 프리미티브)
 ├── recognition/        # 이미지 → .cgb: SAM 세분화, 깊이 추정, 프리미티브 피팅
+├── app/                # CubeGB Studio — 올인원 웹 GUI (FastAPI + three.js)
 ├── comfyui_nodes/      # ComfyUI 커스텀 노드
 ├── samples/            # 손으로 작성한 .cgb 예제 (의자, 탁자, 건물)
 ├── tests/              # pytest 테스트 (포맷 + 베이커)
@@ -89,8 +90,20 @@ python -m pip install -r requirements.txt -r requirements-recognition.txt
 
 ## 빠른 시작
 
-**샘플 보기** — [`viewer/index.html`](viewer/index.html)을 브라우저에서 열고
-`samples/chair.cgb`를 페이지에 드래그하세요. [docs/viewer.md](docs/viewer.md) 참고.
+**올인원 GUI (CubeGB Studio)** — 이미지 선택 → `.cgb` 생성 → 3D 뷰 → 내보내기를
+한 화면에서:
+
+```bash
+python -m pip install -r requirements.txt -r requirements-app.txt
+python -m app.server        # 브라우저에서 http://127.0.0.1:8000/ 자동 열림
+```
+
+생성 단계는 인식 스택 + 모델 가중치가 필요하지만, **`.cgb` 불러오기 → 보기 →
+내보내기**는 코어만으로 동작합니다. [docs/studio.md](docs/studio.md) 참고.
+
+**샘플 보기 (단독 뷰어)** — [`viewer/index.html`](viewer/index.html)을 브라우저에서
+열고 `samples/chair.cgb`를 페이지에 드래그하세요(서버 불필요).
+[docs/viewer.md](docs/viewer.md) 참고.
 
 **`.cgb`를 메쉬로 베이크:**
 
@@ -128,6 +141,7 @@ Phase 4–6에서 인식과 패키징을 더합니다.
 | 4 | 세분화(SAM) + 깊이(Depth Anything V2) | ✅ 코드 (가중치 필요) |
 | 5 | 프리미티브 피팅 & 자세 정규화 → `.cgb` | ✅ 코드 (가중치 필요) |
 | 6 | ComfyUI 커스텀 노드 | ✅ |
+| — | CubeGB Studio (올인원 웹 GUI, 요청서 외 추가) | ✅ 뷰/내보내기 테스트됨 |
 
 테스트 실행:
 
@@ -138,6 +152,7 @@ python -m pytest
 ## 문서
 
 - [`.cgb` 포맷](docs/cgb-format.md) — 스펙 & 기하 규약
+- [CubeGB Studio (올인원 GUI)](docs/studio.md)
 - [웹 뷰어](docs/viewer.md)
 - [메쉬 베이커](docs/baker.md)
 - [Blender 애드온](docs/blender-addon.md)
