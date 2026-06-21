@@ -3,169 +3,171 @@
   <img src="images/cubegb-logo.png" alt="큐브공방 / CubeGB" width="420">
 </p>
 <h1 align="center">큐브공방 · CubeGB</h1>
-<p align="center"><b>Image → editable parametric-primitive blockout.</b></p>
+<p align="center"><b>이미지 → 편집 가능한 파라메트릭 프리미티브 블록아웃</b></p>
 <p align="center">
-  Turn a single image into a low-poly arrangement of cubes, cylinders, cones and
-  spheres you can immediately edit in Blender — not a dense, un-editable mesh.
+  이미지 한 장을 큐브·실린더·콘·스피어의 저폴리 조합으로 분해해, 무겁고 편집이
+  어려운 메쉬가 아니라 <b>Blender에서 바로 편집 가능한 프리미티브</b>로 만들어 줍니다.
 </p>
 <p align="center">
-  <a href="#license">License: MIT</a> ·
-  <a href="docs/cgb-format.md">.cgb format</a> ·
-  <a href="#status">Status</a>
+  <b>한국어</b> · <a href="README.en.md">English</a>
+</p>
+<p align="center">
+  <a href="#라이선스">License: MIT</a> ·
+  <a href="docs/cgb-format.md">.cgb 포맷</a> ·
+  <a href="#개발-현황">개발 현황</a>
 </p>
 
 ---
 
-## What is CubeGB?
+## CubeGB란?
 
-CubeGB ("큐브공방", *cube workshop*) is a lightweight **image-to-blockout**
-generator. Given one image of a hard-surface object (furniture, buildings,
-machines, props), it reconstructs it as a small set of **editable parametric
-primitives** and writes a tiny `.cgb` JSON file.
+CubeGB(**큐브공방**, *cube workshop*)는 초경량 **이미지 → 블록아웃(blockout)**
+생성기입니다. 하드서피스(가구·건물·기계·소품 등 인공물) 이미지 한 장을 입력받아,
+**편집 가능한 파라메트릭 프리미티브**의 조합으로 재구성하고 아주 작은 `.cgb` JSON
+파일로 저장합니다.
 
-**Why not just use Hunyuan3D / TRELLIS / Tripo?** Those produce high-density
-textured meshes or Gaussian splats that are great to look at but painful to
-*edit*. CubeGB instead targets the **blockout (greybox) stage** of a 3D
-artist's workflow: it gives you clean primitives — KB-sized, axis-aligned,
-named, and instantly re-editable in Blender — as a fast starting point you
-refine by hand.
+**Hunyuan3D / TRELLIS / Tripo 같은 도구와 무엇이 다른가요?** 그런 모델들은 보기엔
+좋지만 *편집*하기 까다로운 고밀도 텍스처 메쉬나 가우시안 스플랫을 출력합니다.
+CubeGB는 대신 3D 아티스트 작업 흐름의 **블록아웃(그레이박스) 단계**를 겨냥합니다 —
+KB 단위, 축에 정렬되고, 이름이 붙어 있으며, Blender에서 즉시 다시 편집할 수 있는
+깔끔한 프리미티브를 **빠른 출발점**으로 제공해, 디테일은 사람이 다듬습니다.
 
-> **Scope.** CubeGB is intentionally specialized for **hard-surface, man-made
-> objects**. It does *not* try to reconstruct organic forms (faces, animals,
-> cloth), generate high-quality textures, or recover exact metric measurements
-> from a single image — occluded surfaces are reasonably *estimated*.
+> **스코프.** CubeGB는 의도적으로 **하드서피스(인공물)** 에 특화되어 있습니다.
+> 유기적 형태(얼굴·동식물·천 등)의 정밀 복원, 고품질 텍스처 생성, 단일 이미지로부터의
+> 정확한 실측 복원은 다루지 않으며 — 가려진 면은 합리적으로 *추정*합니다.
 
-## The core idea: `.cgb` is the source of truth
+## 핵심 아이디어: `.cgb`가 원본(source of truth)
 
 ```
-                 (recognition)            (bake)
-   image  ───────────────────────►  .cgb  ─────────►  glTF / GLB / OBJ
+                  (인식)                  (베이크)
+   이미지  ───────────────────────►  .cgb  ─────────►  glTF / GLB / OBJ
                                       │
-                                      │  (Blender add-on)
-                                      └─────────────►  native editable primitives
+                                      │  (Blender 애드온)
+                                      └─────────────►  편집 가능한 네이티브 프리미티브
 ```
 
-- **`.cgb`** (parametric JSON) is the **single source of truth** — lossless,
-  human-readable, `git diff`-friendly, kilobytes in size.
-- Meshes (glTF/OBJ) are **derived artifacts** *baked* from `.cgb`.
-- The **Blender add-on** restores `.cgb` as *real Blender primitives* (it does
-  **not** bake them to mesh), so they stay grab-and-scale editable.
+- **`.cgb`**(파라메트릭 JSON)는 **유일한 원본**입니다 — 무손실, 사람이 읽을 수 있고,
+  `git diff`에 친화적이며, 파일 크기는 킬로바이트 단위입니다.
+- 메쉬(glTF/OBJ)는 `.cgb`에서 **구워낸(bake) 파생물**입니다.
+- **Blender 애드온**은 `.cgb`를 *실제 Blender 프리미티브*로 복원합니다(메쉬로 굽지
+  **않음**). 그래서 잡고 스케일·이동하는 편집성이 그대로 유지됩니다.
 
-CubeGB is built **middle-out**: the downstream tooling (format → viewer → baker
-→ importer) is complete and verifiable with hand-authored `.cgb` *first*, and
-the AI recognition pipeline simply *fills in* that format. The whole skeleton
-works even when recognition is imperfect.
+CubeGB는 **미들아웃(middle-out)** 방식으로 만들어졌습니다: 어려운 인식(AI)을 먼저
+만들지 않고, 다운스트림 도구(포맷 → 뷰어 → 베이커 → 임포터)를 손으로 작성한 `.cgb`로
+**먼저** 완성·검증한 뒤, AI 인식 파이프라인이 이 포맷을 *채우게* 합니다. 인식이
+불완전해도 전체 골격이 동작합니다.
 
-## Repository layout
+## 리포지토리 구조
 
 ```
 cubegb/
-├── cgb/                 # .cgb format: JSON Schema, IO, validation
-├── viewer/             # three.js single-file web viewer (index.html)
-├── bake/               # .cgb → glTF/GLB/OBJ baker (low-poly)
-├── blender_addon/      # Blender importer add-on (editable primitives)
-├── recognition/        # image → .cgb: SAM segmentation, depth, primitive fitting
-├── comfyui_nodes/      # ComfyUI custom nodes
-├── samples/            # hand-authored .cgb examples (chair, table, building)
-├── tests/              # pytest suite (format + baker)
-└── docs/               # documentation
+├── cgb/                 # .cgb 포맷: JSON 스키마, IO, 검증
+├── viewer/             # three.js 단일 HTML 웹 뷰어 (index.html)
+├── bake/               # .cgb → glTF/GLB/OBJ 베이커 (저폴리)
+├── blender_addon/      # Blender 임포터 애드온 (편집 가능 프리미티브)
+├── recognition/        # 이미지 → .cgb: SAM 세분화, 깊이 추정, 프리미티브 피팅
+├── comfyui_nodes/      # ComfyUI 커스텀 노드
+├── samples/            # 손으로 작성한 .cgb 예제 (의자, 탁자, 건물)
+├── tests/              # pytest 테스트 (포맷 + 베이커)
+└── docs/               # 문서
 ```
 
-## Install
+## 설치
 
-CubeGB has a light **core** (format + baker + viewer tooling) and a heavy
-**recognition** extra (PyTorch + SAM + Depth Anything).
+CubeGB는 가벼운 **코어**(포맷 + 베이커 + 뷰어 도구)와 무거운 **인식(recognition)**
+옵션(PyTorch + SAM + Depth Anything)으로 나뉩니다.
 
 ```bash
-# Core: enough to author/validate .cgb and bake meshes
+# 코어: .cgb 작성/검증 및 메쉬 베이크에 필요
 python -m pip install -r requirements.txt        # Python 3.10+
 
-# (Optional) recognition pipeline — large; a GPU is recommended
+# (선택) 인식 파이프라인 — 용량이 크며 GPU 권장
 python -m pip install -r requirements.txt -r requirements-recognition.txt
 ```
 
-Pretrained **model weights are downloaded separately** — see
-[docs/recognition.md](docs/recognition.md).
+사전학습 **모델 가중치는 별도로 내려받습니다** — [docs/recognition.md](docs/recognition.md) 참고.
 
-## Quickstart
+## 빠른 시작
 
-**View a sample** — open [`viewer/index.html`](viewer/index.html) in a browser
-and drag `samples/chair.cgb` onto the page. See [docs/viewer.md](docs/viewer.md).
+**샘플 보기** — [`viewer/index.html`](viewer/index.html)을 브라우저에서 열고
+`samples/chair.cgb`를 페이지에 드래그하세요. [docs/viewer.md](docs/viewer.md) 참고.
 
-**Bake a `.cgb` to a mesh:**
+**`.cgb`를 메쉬로 베이크:**
 
 ```bash
 python -m bake.baker samples/chair.cgb --format glb --out chair.glb
 python -m bake.baker samples/table.cgb --format obj --out table.obj
 ```
 
-**Import into Blender** — install [`blender_addon/cubegb_import.py`](blender_addon/cubegb_import.py)
-and use *File ▸ Import ▸ CubeGB (.cgb)*. See [docs/blender-addon.md](docs/blender-addon.md).
+**Blender로 임포트** — [`blender_addon/cubegb_import.py`](blender_addon/cubegb_import.py)을
+설치하고 *File ▸ Import ▸ CubeGB (.cgb)* 메뉴를 사용하세요.
+[docs/blender-addon.md](docs/blender-addon.md) 참고.
 
-**Generate `.cgb` from an image** (needs the recognition extra + model weights):
+**이미지에서 `.cgb` 생성**(인식 옵션 + 모델 가중치 필요):
 
 ```bash
 python -m recognition.fit photo.jpg --sam-checkpoint sam_vit_h_4b8939.pth --out result.cgb
 ```
 
-**In ComfyUI** — clone this repo into `ComfyUI/custom_nodes/` and use the
-**CubeGB Generate / Save / Bake / Preview** nodes. See [docs/comfyui.md](docs/comfyui.md).
+**ComfyUI에서** — 이 리포를 `ComfyUI/custom_nodes/`에 클론한 뒤
+**CubeGB Generate / Save / Bake / Preview** 노드를 사용하세요.
+[docs/comfyui.md](docs/comfyui.md) 참고.
 
-## Status
+## 개발 현황
 
-CubeGB is developed in phases (see [docs/cgb-format.md](docs/cgb-format.md) and
-the per-component docs). Phases 0–3 (the downstream skeleton) are testable
-without any ML; Phases 4–6 add recognition and packaging.
+CubeGB는 단계(Phase)별로 개발됩니다([docs/cgb-format.md](docs/cgb-format.md) 및
+컴포넌트별 문서 참고). Phase 0–3(다운스트림 골격)은 ML 없이 검증 가능하며,
+Phase 4–6에서 인식과 패키징을 더합니다.
 
-| Phase | Component | State |
+| Phase | 컴포넌트 | 상태 |
 |---|---|---|
-| 0 | `.cgb` format, IO, validation, samples | ✅ tested |
-| 1 | three.js web viewer | ✅ |
-| 2 | mesh baker (glTF/OBJ) | ✅ tested |
-| 3 | Blender importer add-on | ✅ |
-| 4 | segmentation (SAM) + depth (Depth Anything V2) | ✅ code (needs weights) |
-| 5 | primitive fitting & pose normalization → `.cgb` | ✅ code (needs weights) |
-| 6 | ComfyUI custom nodes | ✅ |
+| 0 | `.cgb` 포맷, IO, 검증, 샘플 | ✅ 테스트됨 |
+| 1 | three.js 웹 뷰어 | ✅ |
+| 2 | 메쉬 베이커 (glTF/OBJ) | ✅ 테스트됨 |
+| 3 | Blender 임포터 애드온 | ✅ |
+| 4 | 세분화(SAM) + 깊이(Depth Anything V2) | ✅ 코드 (가중치 필요) |
+| 5 | 프리미티브 피팅 & 자세 정규화 → `.cgb` | ✅ 코드 (가중치 필요) |
+| 6 | ComfyUI 커스텀 노드 | ✅ |
 
-Run the test suite:
+테스트 실행:
 
 ```bash
 python -m pytest
 ```
 
-## Documentation
+## 문서
 
-- [The `.cgb` format](docs/cgb-format.md) — spec & geometry conventions
-- [Web viewer](docs/viewer.md)
-- [Mesh baker](docs/baker.md)
-- [Blender add-on](docs/blender-addon.md)
-- [Recognition pipeline](docs/recognition.md)
-- [ComfyUI nodes](docs/comfyui.md)
-- [Contributing](CONTRIBUTING.md)
+- [`.cgb` 포맷](docs/cgb-format.md) — 스펙 & 기하 규약
+- [웹 뷰어](docs/viewer.md)
+- [메쉬 베이커](docs/baker.md)
+- [Blender 애드온](docs/blender-addon.md)
+- [인식 파이프라인](docs/recognition.md)
+- [ComfyUI 노드](docs/comfyui.md)
+- [기여 가이드](CONTRIBUTING.md)
 
-## Model & data licenses
+> 문서는 현재 영어로 작성되어 있습니다(코드 주석 포함). 한국어 문서는 점진적으로 추가될 예정입니다.
 
-CubeGB's own code is **MIT**. The recognition pipeline relies on third-party
-pretrained models — **you are responsible for complying with their licenses**:
+## 모델 & 데이터 라이선스
 
-| Model | Use | License |
+CubeGB 본체 코드는 **MIT**입니다. 인식 파이프라인은 서드파티 사전학습 모델에
+의존하며 — **각 모델의 라이선스 준수 책임은 사용자에게 있습니다**:
+
+| 모델 | 용도 | 라이선스 |
 |---|---|---|
-| [Segment Anything (SAM)](https://github.com/facebookresearch/segment-anything) | segmentation | Apache-2.0 |
-| [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2) | depth | varies by variant — **verify before redistribution/commercial use** |
-| [MiDaS](https://github.com/isl-org/MiDaS) | depth (fallback) | MIT |
+| [Segment Anything (SAM)](https://github.com/facebookresearch/segment-anything) | 세분화 | Apache-2.0 |
+| [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2) | 깊이 추정 | 변형별 상이 — **재배포·상업적 사용 전 반드시 확인** |
+| [MiDaS](https://github.com/isl-org/MiDaS) | 깊이 추정(폴백) | MIT |
 
-See [docs/recognition.md](docs/recognition.md) for checkpoint download
-instructions and license notes.
+체크포인트 다운로드 안내와 라이선스 주의는 [docs/recognition.md](docs/recognition.md)를 참고하세요.
 
-## License
+## 라이선스
 
-MIT — see [LICENSE](LICENSE).
+MIT — [LICENSE](LICENSE) 참고.
 
-## Trademark
+## 상표권
 
-**“큐브공방 / CubeGB”** (the name and logo) is a registered trademark. The MIT
-license covers the **source code** only; it does **not** grant rights to use the
-“큐브공방 / CubeGB” name or logo. You may use the software under the MIT terms,
-but please do not use the project name or logo in a way that implies endorsement
-or affiliation without permission. The logo in [`images/`](images/) is provided
-for referring to this project, not for redistribution as your own mark.
+**“큐브공방 / CubeGB”**(이름 및 로고)는 등록 상표입니다. MIT 라이선스는 **소스 코드**에만
+적용되며, “큐브공방 / CubeGB” 이름이나 로고를 사용할 권리를 부여하지 **않습니다**. MIT
+조건 하에 소프트웨어는 자유롭게 사용할 수 있으나, 허가 없이 프로젝트 이름·로고를
+보증이나 제휴를 암시하는 방식으로 사용하지 말아 주세요. [`images/`](images/)의 로고는
+이 프로젝트를 가리키기 위한 것이며 자신의 상표로 재배포하기 위한 것이 아닙니다.
