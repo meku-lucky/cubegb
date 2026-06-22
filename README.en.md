@@ -19,6 +19,14 @@
 
 ---
 
+> ⚠️ **Work in progress.** CubeGB is under active development and does **not yet
+> guarantee production-usable results.** It captures the overall form
+> (silhouette / proportions) today, but the primitives (cubes) overlap, are rough,
+> and are awkward to edit as-is. The **multi-view (2×2 sheet)** path gives better
+> results than a single image. Quality is improving incrementally.
+>
+> ![work-in-progress example — input and current result](images/wip-example.png)
+
 ## What is CubeGB?
 
 CubeGB ("큐브공방", *cube workshop*) is a lightweight **image-to-blockout**
