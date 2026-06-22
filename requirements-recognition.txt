@@ -1,19 +1,30 @@
-# Heavy ML stack for the recognition pipeline (Phase 4-5).
-# Install on top of requirements.txt. A CUDA-capable GPU is recommended but not
-# required; CPU inference works for small images, just slowly.
+# Recognition stack for the image -> .cgb pipeline (Phase 4-5).
+# Install on top of the core requirements:
 #
 #   pip install -r requirements.txt -r requirements-recognition.txt
 #
-# Pretrained model WEIGHTS are downloaded separately - see docs/comfyui.md and
-# docs/recognition.md for SAM and Depth Anything V2 checkpoint instructions.
+# A CUDA GPU is recommended; on Apple Silicon PyTorch uses MPS automatically.
+# CPU also works, just slowly.
+#
+# Pretrained model WEIGHTS are downloaded separately:
+#   - SAM checkpoint: download manually (see docs/recognition.md / README).
+#   - Depth Anything V2: downloaded automatically from Hugging Face by
+#     `transformers` on first run (model "depth-anything/Depth-Anything-V2-Small-hf").
 -r requirements.txt
 
 torch>=2.0
 torchvision>=0.15
 opencv-python>=4.8
 pillow>=10.0
-open3d>=0.17
 
-# Segment Anything (Apache-2.0). Depth Anything V2 is typically vendored or
-# installed from its repo; see docs/recognition.md.
-segment-anything>=1.0
+# Depth Anything V2 via the Hugging Face pipeline (auto-downloads weights).
+transformers>=4.40
+
+# Segment Anything (Apache-2.0), official repo.
+segment-anything @ git+https://github.com/facebookresearch/segment-anything.git
+
+# Optional: only needed to export debug point clouds to .ply (recognition.depth
+# .save_point_cloud_ply). Not required for generating .cgb. open3d has no wheel
+# for very new Python versions (e.g. 3.14); install it under Python 3.10-3.12 if
+# you want .ply debugging:
+#   open3d>=0.17

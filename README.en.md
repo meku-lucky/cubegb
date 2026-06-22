@@ -108,6 +108,81 @@ viewing, and exporting a `.cgb`** work with just the core. See [docs/studio.md](
 in a browser and drag `samples/chair.cgb` onto the page (no server needed). See
 [docs/viewer.md](docs/viewer.md).
 
+## Generating `.cgb` from an image (recognition setup)
+
+The "image → generate" step is AI inference, so it needs a heavier dependency
+set and **pretrained model weights** that are not part of the core install.
+Follow the steps below to enable the **Generate** button in Studio and the
+`recognition.fit` CLI.
+
+### 1) Install the recognition dependencies
+
+```bash
+pip install -r requirements.txt -r requirements-recognition.txt
+```
+
+- Installs PyTorch · torchvision · OpenCV · transformers · Segment Anything (SAM).
+- **GPU**: on Apple Silicon, PyTorch uses **MPS** automatically; with an NVIDIA
+  GPU it uses **CUDA**. CPU works too, just slowly.
+- `open3d` is only used to export debug point clouds (`.ply`) and is **not
+  required** for generation (it may have no wheel on very new Python, so it's
+  optional).
+
+### 2) Download a SAM checkpoint
+
+SAM weights are large and downloaded manually. Pick one (accuracy ↔ speed/size):
+
+| Model | File | Size | Download URL |
+|---|---|---|---|
+| `vit_h` (accurate) | `sam_vit_h_4b8939.pth` | ~2.4GB | https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth |
+| `vit_l` (medium) | `sam_vit_l_0b3195.pth` | ~1.2GB | https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth |
+| `vit_b` (light) | `sam_vit_b_01ec64.pth` | ~375MB | https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth |
+
+e.g. download `vit_h` into `models/`:
+
+```bash
+mkdir -p models
+curl -L -o models/sam_vit_h_4b8939.pth \
+  https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+```
+
+### 3) Depth model — auto-downloaded (nothing to do)
+
+Depth Anything V2 (small) is fetched automatically from Hugging Face by
+`transformers` on first run (`depth-anything/Depth-Anything-V2-Small-hf`,
+~100MB). No manual step.
+
+### 4) Point to the checkpoint and run
+
+Set it via an environment variable (recommended), or type the path into Studio's
+*Generate options*.
+
+```bash
+export CUBEGB_SAM_CHECKPOINT=$PWD/models/sam_vit_h_4b8939.pth
+python -m app.server          # then drop an image in Studio → Generate
+```
+
+Or via the CLI:
+
+```bash
+python -m recognition.fit photo.jpg \
+  --sam-checkpoint models/sam_vit_h_4b8939.pth \
+  --sam-model-type vit_h --out result.cgb
+```
+
+`--sam-model-type` must match the checkpoint you downloaded (`vit_h`/`vit_l`/`vit_b`).
+
+### Notes
+
+- **Apple Silicon**: SAM does not support MPS (a float64 limitation), so it runs
+  on **CPU automatically** (the depth model still uses MPS). `vit_h` on CPU can
+  be slow — use `vit_b` for quick tests.
+- A single image only shows front surfaces, so hidden geometry is **estimated** —
+  the output is an editable blockout, not an exact reconstruction.
+- Model licenses (SAM Apache-2.0, Depth Anything varies by variant) — see
+  [Model & data licenses](#model--data-licenses) and
+  [docs/recognition.md](docs/recognition.md).
+
 **Bake a `.cgb` to a mesh:**
 
 ```bash

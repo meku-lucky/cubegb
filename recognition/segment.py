@@ -35,6 +35,7 @@ Links: https://github.com/facebookresearch/segment-anything#model-checkpoints
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -142,19 +143,36 @@ class Segmenter:
     # Model loading (lazy, heavy)
     # ------------------------------------------------------------------ #
     def _pick_device(self) -> str:
-        """Resolve the torch device, honouring an explicit override."""
-        if self.device is not None:
-            return self.device
-        try:
-            import torch
-        except ImportError as exc:  # pragma: no cover - env dependent
-            raise RuntimeError(_INSTALL_HINT) from exc
-        if torch.cuda.is_available():
-            return "cuda"
-        # Apple Silicon: prefer MPS when present.
-        if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
-            return "mps"
-        return "cpu"
+        """Resolve the torch device for SAM.
+
+        SAM's ``SamAutomaticMaskGenerator`` builds ``float64`` point tensors,
+        which Apple's MPS backend cannot handle ("Cannot convert a MPS Tensor to
+        float64"). So we never run SAM on MPS: an explicit ``device="mps"`` (or
+        an auto-pick that lands on MPS) falls back to CPU with a warning. The
+        depth model is unaffected and may still use MPS.
+        """
+        requested = self.device
+        if requested is None:
+            try:
+                import torch
+            except ImportError as exc:  # pragma: no cover - env dependent
+                raise RuntimeError(_INSTALL_HINT) from exc
+            if torch.cuda.is_available():
+                return "cuda"
+            if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+                requested = "mps"
+            else:
+                return "cpu"
+
+        if requested == "mps":
+            warnings.warn(
+                "SAM does not support the MPS backend (float64 limitation); "
+                "running SAM on CPU instead.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return "cpu"
+        return requested
 
     def load(self) -> "Segmenter":
         """Eagerly load the SAM model and build the mask generator.

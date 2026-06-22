@@ -29,16 +29,41 @@ A CUDA GPU is recommended; CPU works for small images, just slowly.
 
 The Python deps do **not** include model checkpoints.
 
-- **SAM (Segment Anything)** — Apache-2.0. Download a checkpoint
-  (`sam_vit_h_4b8939.pth` etc.) from the
-  [SAM model checkpoints](https://github.com/facebookresearch/segment-anything#model-checkpoints).
-- **Depth Anything V2** — license **varies by variant**; verify the variant you
-  download before any redistribution or commercial use. See the
-  [Depth Anything V2 repo](https://github.com/DepthAnything/Depth-Anything-V2).
-- **MiDaS** (optional depth fallback) — MIT.
+- **SAM (Segment Anything)** — Apache-2.0. Download one checkpoint:
+
+  | Model | File | Size | URL |
+  |---|---|---|---|
+  | `vit_h` | `sam_vit_h_4b8939.pth` | ~2.4GB | https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth |
+  | `vit_l` | `sam_vit_l_0b3195.pth` | ~1.2GB | https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth |
+  | `vit_b` | `sam_vit_b_01ec64.pth` | ~375MB | https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth |
+
+  ```bash
+  mkdir -p models
+  curl -L -o models/sam_vit_h_4b8939.pth \
+    https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+  ```
+
+- **Depth Anything V2** — **auto-downloaded** from Hugging Face by `transformers`
+  on first run (`depth-anything/Depth-Anything-V2-Small-hf`); no manual step.
+  License **varies by variant**; verify before redistribution/commercial use.
+  See the [Depth Anything V2 repo](https://github.com/DepthAnything/Depth-Anything-V2).
+- **MiDaS** (optional depth fallback, via `torch.hub`) — MIT.
 
 > CubeGB's own code is MIT, but you are responsible for complying with each
 > model's license. See the model table in the [README](../README.md#model--data-licenses).
+
+## Troubleshooting
+
+- **Apple Silicon (MPS):** SAM's automatic mask generator builds `float64`
+  tensors, which MPS rejects (`Cannot convert a MPS Tensor to float64`). CubeGB
+  therefore runs **SAM on CPU automatically** (you'll see a one-line warning);
+  the depth model still uses MPS. `vit_h` on CPU is slow — use `vit_b` for quick
+  iteration.
+- **`open3d` won't install** on very new Python (e.g. 3.14): it's only needed for
+  optional `.ply` debug export, not for generation — skip it, or use Python
+  3.10–3.12 if you want point-cloud debugging.
+- **Slow / out of memory:** `vit_h` is the largest SAM model. Drop to `vit_l` or
+  `vit_b`, lower `--max-segments`, or downscale the input image.
 
 ## CLI
 
