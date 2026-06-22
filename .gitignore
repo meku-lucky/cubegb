@@ -47,9 +47,17 @@ ENV/
 /debug_out/
 /test_result*.cgb
 /test_scene.png
+# Test images: ignore by default, but DO commit the AI-generated concept art /
+# 2x2 multi-view sheets and our own synthetic primitives. Third-party downloads
+# (e.g. Wikimedia chair.png / fire_hydrant.jpg / traffic_cone.jpg) stay ignored
+# to avoid redistributing other people's images — see test_images/_SOURCES.md.
 /test_images/*.png
 /test_images/*.jpg
 /test_images/*.jpeg
+!/test_images/*_concept.png
+!/test_images/concept_*.png
+!/test_images/*_2x2_views.png
+!/test_images/synth_*.png
 
 # OS / editor
 .DS_Store
