@@ -151,7 +151,9 @@ async def generate(
 
         dev = None if device in ("", "auto") else device
         try:
-            doc = image_to_cgb(
+            # image_to_cgb returns a small SUMMARY and writes the full .cgb
+            # document to out_path — load that document to return to the client.
+            summary = image_to_cgb(
                 str(img_path),
                 str(out_path),
                 sam_checkpoint=sam_ckpt,
@@ -165,7 +167,9 @@ async def generate(
         except Exception as exc:  # surface model/runtime errors to the UI
             raise HTTPException(status_code=400, detail=f"Generation failed: {exc}")
 
-    return JSONResponse({"cgb": doc})
+        doc = cgb.load(str(out_path))  # the full, schema-valid .cgb document
+
+    return JSONResponse({"cgb": doc, "summary": summary})
 
 
 # --------------------------------------------------------------------------- #

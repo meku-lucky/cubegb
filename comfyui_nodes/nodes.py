@@ -200,15 +200,18 @@ class CubeGBGenerate:
         out_cgb = os.path.join(tmp_dir, f"cubegb_out_{uuid.uuid4().hex[:8]}.cgb")
         Image.fromarray(arr, mode="RGB").save(in_png)
 
-        # `image_to_cgb` writes the .cgb to out_path and returns the dict.
+        # image_to_cgb returns a SUMMARY and writes the full .cgb document to
+        # out_cgb; we load that document below. max_segments is honoured by the
+        # pipeline itself.
         resolved_device = None if device == "auto" else device
         try:
-            doc = image_to_cgb(
+            image_to_cgb(
                 in_png,
                 out_cgb,
                 sam_checkpoint=sam_checkpoint or None,
                 depth_checkpoint=depth_checkpoint or None,
                 device=resolved_device,
+                max_segments=int(max_segments),
             )
         except Exception as exc:
             raise RuntimeError(
@@ -221,18 +224,7 @@ class CubeGBGenerate:
             except OSError:
                 pass
 
-        # `max_segments` is honoured here as a defensive cap in case the pipeline
-        # returns more primitives than requested: keep the first N.
-        if isinstance(doc, dict):
-            prims = doc.get("primitives")
-            if isinstance(prims, list) and len(prims) > max_segments:
-                doc["primitives"] = prims[:max_segments]
-        else:
-            raise RuntimeError(
-                "recognition.fit.image_to_cgb did not return a .cgb dict "
-                f"(got {type(doc).__name__})."
-            )
-
+        doc = cgb.load(out_cgb)  # the full, schema-valid .cgb document
         return (doc,)
 
     @staticmethod
