@@ -13,7 +13,7 @@ with a three.js frontend that reuses CubeGB's renderer.
 ```bash
 pip install -r requirements.txt -r requirements-app.txt
 # for the "Generate" step, also install the recognition stack + model weights:
-pip install -r requirements-recognition.txt   # see docs/recognition.md
+pip install -r requirements-recognition.txt   # see docs/recognition.en.md
 
 python -m app.server          # or, if installed:  cubegb-studio
 ```

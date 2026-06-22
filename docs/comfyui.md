@@ -18,7 +18,7 @@ Restart ComfyUI. The nodes appear under the **CubeGB** category. (ComfyUI Manage
 / Registry support is planned.)
 
 Model weights for **CubeGB Generate** are downloaded separately — see
-[recognition.md](recognition.md).
+[recognition.en.md](recognition.en.md).
 
 ## Nodes
 

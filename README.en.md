@@ -89,7 +89,7 @@ python -m pip install -r requirements.txt -r requirements-recognition.txt
 ```
 
 Pretrained **model weights are downloaded separately** — see
-[docs/recognition.md](docs/recognition.md).
+[docs/recognition.en.md](docs/recognition.en.md).
 
 ## Quickstart
 
@@ -181,7 +181,7 @@ python -m recognition.fit photo.jpg \
   the output is an editable blockout, not an exact reconstruction.
 - Model licenses (SAM Apache-2.0, Depth Anything varies by variant) — see
   [Model & data licenses](#model--data-licenses) and
-  [docs/recognition.md](docs/recognition.md).
+  [docs/recognition.en.md](docs/recognition.en.md).
 
 **Bake a `.cgb` to a mesh:**
 
@@ -232,7 +232,7 @@ python -m pytest
 - [Web viewer](docs/viewer.md)
 - [Mesh baker](docs/baker.md)
 - [Blender add-on](docs/blender-addon.md)
-- [Recognition pipeline](docs/recognition.md)
+- [Recognition pipeline](docs/recognition.en.md)
 - [ComfyUI nodes](docs/comfyui.md)
 - [Contributing](CONTRIBUTING.md)
 
@@ -247,7 +247,7 @@ pretrained models — **you are responsible for complying with their licenses**:
 | [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2) | depth | varies by variant — **verify before redistribution/commercial use** |
 | [MiDaS](https://github.com/isl-org/MiDaS) | depth (fallback) | MIT |
 
-See [docs/recognition.md](docs/recognition.md) for checkpoint download
+See [docs/recognition.en.md](docs/recognition.en.md) for checkpoint download
 instructions and license notes.
 
 ## License
