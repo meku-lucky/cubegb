@@ -6,6 +6,15 @@ All notable changes to CubeGB are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Multi-view precision mode now abstracts the carved voxel solid into *varied*
+  primitives** (`recognition/primfit.py`): a top-down recursive decomposition
+  picks cube/cylinder/cone/sphere per part by IoU and splits at part junctions
+  (1-step lookahead), replacing the cubes-only box tiling. On the sample sheets
+  this cut primitive **overlap from ~0.6 to ~0.0** while raising coverage, and
+  produces cylinders/cones/spheres where the shape warrants (e.g. round legs,
+  domed caps). It is the default for `image_to_cgb_multiview`.
+
 ### Added
 - **`.cgb` format v0.1** — JSON Schema (`cgb/schema.json`), IO + builders
   (`cgb/io.py`), and schema + semantic validation (`cgb/validate.py`).

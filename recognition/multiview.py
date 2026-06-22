@@ -334,8 +334,8 @@ def image_to_cgb_multiview(
     prior_weight: float = 0.6,
     target_size: float = 1.5,
     ground: bool = True,
-    method: str = "boxes",
-    max_boxes: int = 16,
+    method: str = "primitives",
+    max_boxes: int = 24,
 ) -> dict:
     """Reconstruct a ``.cgb`` from a 2x2 multi-view sheet via space carving.
 
@@ -376,7 +376,15 @@ def image_to_cgb_multiview(
         return (float(c[0]), float(c[1]), float(c[2]))
 
     fits: list = []
-    if method == "boxes":
+    if method == "primitives":
+        # Recursive shape abstraction: explain the carved solid with VARIED
+        # volumetric primitives (cube/cylinder/cone/sphere), choosing each part's
+        # type by IoU and partitioning the voxels (little overlap). See
+        # recognition.primfit.
+        from .primfit import decompose_occupancy
+        for vp in decompose_occupancy(occ, max_prims=max_boxes):
+            fits.append(_voxprim_to_fit(vp, centroid, scale, front_color))
+    elif method == "boxes":
         # Tile the carved SOLID with axis-aligned boxes (no gaps / no floating
         # parts) — the faithful path. Each box becomes an axis-aligned cube.
         for centre, size in occupancy_to_boxes(occ, max_boxes=max_boxes):
@@ -430,6 +438,44 @@ def image_to_cgb_multiview(
         "voxels": int(occ.sum()), "n_primitives": len(fits),
         "primitives": [{"type": f.prim_type} for f in fits],
     }
+
+
+import math
+
+# CGB cylinder/cone point along +Y locally; rotate +Y onto the world axis.
+_CYL_EULER = {0: (0.0, 0.0, -math.pi / 2), 1: (0.0, 0.0, 0.0), 2: (math.pi / 2, 0.0, 0.0)}
+# Cone apex direction (axis, apex_high) -> euler mapping +Y onto that direction.
+_CONE_EULER = {
+    (0, True): (0.0, 0.0, -math.pi / 2), (0, False): (0.0, 0.0, math.pi / 2),
+    (1, True): (0.0, 0.0, 0.0), (1, False): (math.pi, 0.0, 0.0),
+    (2, True): (math.pi / 2, 0.0, 0.0), (2, False): (-math.pi / 2, 0.0, 0.0),
+}
+
+
+def _voxprim_to_fit(vp, centroid, scale, front_color):
+    """Convert a :class:`recognition.primfit.VoxPrim` to a ``fit.FitResult``."""
+    from .fit import FitResult
+
+    cs = (np.asarray(vp.center) - centroid) * scale
+    pos = (float(cs[0]), float(cs[1]), float(cs[2]))
+    color = front_color(float(vp.center[0]), float(vp.center[1]))
+
+    if vp.type == "cube":
+        sz = np.maximum(np.asarray(vp.size) * scale, 1e-3)
+        return FitResult("cube", pos, (0.0, 0.0, 0.0),
+                         {"size": [float(sz[0]), float(sz[1]), float(sz[2])]}, vp.iou, color)
+    if vp.type == "sphere":
+        return FitResult("sphere", pos, (0.0, 0.0, 0.0),
+                         {"radius": float(max(vp.radius * scale, 1e-3)), "segments": 16}, vp.iou, color)
+    if vp.type == "cylinder":
+        return FitResult("cylinder", pos, _CYL_EULER[vp.axis],
+                         {"radius": float(max(vp.radius * scale, 1e-3)),
+                          "height": float(max(vp.height * scale, 1e-3)), "segments": 16}, vp.iou, color)
+    if vp.type == "cone":
+        return FitResult("cone", pos, _CONE_EULER[(vp.axis, vp.apex_high)],
+                         {"radius": float(max(vp.radius * scale, 1e-3)),
+                          "height": float(max(vp.height * scale, 1e-3)), "segments": 16}, vp.iou, color)
+    raise ValueError(vp.type)
 
 
 def _mean_color(rgb: np.ndarray, mask: np.ndarray):
