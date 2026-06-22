@@ -428,6 +428,74 @@ def backproject(
     return world
 
 
+def backproject_scene(
+    depth: np.ndarray,
+    intrinsics: np.ndarray,
+    *,
+    depth_gamma: float = 1.0,
+    valid_mask: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Unproject the **whole** depth map into an ``(H, W, 3)`` world grid.
+
+    Unlike :func:`backproject`, which normalises a *single* segment in isolation
+    (recentring it on its own centroid and rescaling its own extent), this
+    unprojects every pixel in **one shared frame** with a **single global depth
+    normalisation**. Segments therefore keep their *relative* positions and
+    sizes — the caller slices this grid per mask and applies one global
+    recentre/scale across all segments together (see
+    :func:`recognition.fit.image_to_cgb`).
+
+    Parameters
+    ----------
+    depth:
+        ``(H, W)`` depth map, **larger = nearer** (see
+        :meth:`DepthEstimator.estimate`).
+    intrinsics:
+        ``3x3`` pinhole matrix from :func:`default_intrinsics`.
+    depth_gamma:
+        Optional exponent on normalised depth to tune relief (``1.0`` = off).
+    valid_mask:
+        Optional ``(H, W)`` boolean. When given, the global depth min/max is
+        computed over these pixels only (e.g. the union of kept object masks),
+        so far-away background does not flatten the objects' depth range.
+
+    Returns
+    -------
+    ``(H, W, 3)`` float64 world-frame coordinates. **No** recentring/scaling is
+    applied here.
+    """
+    depth = np.asarray(depth, dtype=np.float64)
+    if depth.ndim != 2:
+        raise ValueError(f"depth must be (H, W), got shape {depth.shape}")
+    h, w = depth.shape
+
+    if valid_mask is not None:
+        vm = np.asarray(valid_mask, dtype=bool)
+        sample = depth[vm] if vm.any() else depth.ravel()
+    else:
+        sample = depth.ravel()
+    d_min, d_max = float(sample.min()), float(sample.max())
+    if d_max - d_min < 1e-9:
+        d_norm = np.zeros_like(depth)
+    else:
+        d_norm = np.clip((depth - d_min) / (d_max - d_min), 0.0, 1.0)
+    if depth_gamma != 1.0:
+        d_norm = np.power(d_norm, depth_gamma)
+    z_cam = (1.0 - d_norm) + 1.0  # forward distance, shifted off zero
+
+    fx = float(intrinsics[0, 0])
+    fy = float(intrinsics[1, 1])
+    cx = float(intrinsics[0, 2])
+    cy = float(intrinsics[1, 2])
+
+    xs = np.arange(w, dtype=np.float64)[None, :]
+    ys = np.arange(h, dtype=np.float64)[:, None]
+    x_cam = (xs - cx) / fx * z_cam
+    y_cam = (ys - cy) / fy * z_cam
+    # Camera -> world axis mapping (see module docstring).
+    return np.stack([x_cam, -y_cam, -z_cam], axis=-1)  # (H, W, 3)
+
+
 # --------------------------------------------------------------------------- #
 # Debug helper
 # --------------------------------------------------------------------------- #

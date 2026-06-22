@@ -14,12 +14,14 @@ const $ = (id) => document.getElementById(id);
 let viewer = null;          // CGBViewer instance, or null if 3D unavailable
 let viewerStatus = 'loading'; // 'loading' | 'ready' | 'failed'
 let currentDoc = null;      // the .cgb document currently shown
-let imageFile = null;       // selected input image File
+let imageFile = null;       // selected single input image File
+let sheetFile = null;       // selected 2x2 multi-view sheet File (optional)
 let entries = [];           // [{id, name, type, colorHex, mesh?}]
 
 // --- elements ---
 const vp3d = $('vp3d'), vpEmpty = $('vpEmpty');
 const imgDrop = $('imgDrop'), imgInput = $('imgInput'), imgPreview = $('imgPreview');
+const sheetDrop = $('sheetDrop'), sheetInput = $('sheetInput'), sheetPreview = $('sheetPreview');
 const genBtn = $('genBtn'), genStatus = $('genStatus');
 const loadBtn = $('loadBtn'), cgbInput = $('cgbInput');
 const primList = $('primList'), primCount = $('primCount'), emptyMsg = $('emptyMsg');
@@ -125,44 +127,61 @@ checkHealth();
 initViewer();
 
 // ---------------------------------------------------------------------------
-// Step 1 — image selection
+// Steps 1 & 2 — single image + (optional) multi-view sheet selection
 // ---------------------------------------------------------------------------
-function pickImage(file) {
-  if (!file) return;
-  imageFile = file;
-  imgPreview.src = URL.createObjectURL(file);
-  imgPreview.style.display = 'block';
-  genBtn.disabled = false;
+// Generation needs EITHER a single image OR a 2x2 sheet (or both).
+function updateGenEnabled() {
+  genBtn.disabled = !(imageFile || sheetFile);
 }
-imgDrop.addEventListener('click', () => imgInput.click());
-imgInput.addEventListener('change', (e) => { pickImage(e.target.files[0]); imgInput.value = ''; });
-['dragenter', 'dragover'].forEach((ev) => imgDrop.addEventListener(ev, (e) => {
-  e.preventDefault(); imgDrop.classList.add('drag');
-}));
-['dragleave', 'drop'].forEach((ev) => imgDrop.addEventListener(ev, (e) => {
-  e.preventDefault(); imgDrop.classList.remove('drag');
-}));
-imgDrop.addEventListener('drop', (e) => {
-  const f = e.dataTransfer.files && e.dataTransfer.files[0];
-  if (f && f.type.startsWith('image/')) pickImage(f);
-});
+
+// Wire a drop zone (click / file input / drag-drop) to a setter.
+function wireDrop(drop, input, preview, setFile) {
+  function pick(file) {
+    if (!file) return;
+    setFile(file);
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = 'block';
+    updateGenEnabled();
+  }
+  drop.addEventListener('click', () => input.click());
+  input.addEventListener('change', (e) => { pick(e.target.files[0]); input.value = ''; });
+  ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => {
+    e.preventDefault(); drop.classList.add('drag');
+  }));
+  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => {
+    e.preventDefault(); drop.classList.remove('drag');
+  }));
+  drop.addEventListener('drop', (e) => {
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) pick(f);
+  });
+}
+wireDrop(imgDrop, imgInput, imgPreview, (f) => { imageFile = f; });
+wireDrop(sheetDrop, sheetInput, sheetPreview, (f) => { sheetFile = f; });
 
 // ---------------------------------------------------------------------------
 // Step 2 — generate (.cgb from image) OR load an existing .cgb
 // ---------------------------------------------------------------------------
 genBtn.addEventListener('click', async () => {
-  if (!imageFile) { showError('먼저 이미지를 선택하세요.'); return; }
+  if (!imageFile && !sheetFile) {
+    showError('단일 이미지 또는 멀티뷰 2×2 시트를 선택하세요.');
+    return;
+  }
   toast.classList.remove('show');
   genBtn.disabled = true;
   setStatus('<span class="spinner"></span><span class="muted">생성 중… (모델 추론은 수십 초 걸릴 수 있습니다)</span>');
 
   const fd = new FormData();
-  fd.append('image', imageFile);
+  if (imageFile) fd.append('image', imageFile);
+  if (sheetFile) fd.append('sheet', sheetFile);   // multi-view precision path
   fd.append('sam_checkpoint', $('samCkpt').value);
   fd.append('depth_checkpoint', $('depthCkpt').value);
   fd.append('device', $('device').value);
   fd.append('sam_model_type', $('samType').value);
   fd.append('max_segments', $('maxSeg').value);
+  fd.append('prior_weight', $('priorWeight').value);
+  fd.append('fg_depth_thresh', $('fgDepth').value);
+  fd.append('ground', $('ground').checked ? 'true' : 'false');
 
   try {
     const res = await fetch('/api/generate', { method: 'POST', body: fd });
@@ -174,7 +193,7 @@ genBtn.addEventListener('click', async () => {
     setStatus('<span class="err">실패</span>');
     showError(e.message);
   } finally {
-    genBtn.disabled = false;
+    updateGenEnabled();
   }
 });
 

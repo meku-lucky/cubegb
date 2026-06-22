@@ -108,14 +108,22 @@ def health() -> JSONResponse:
 # --------------------------------------------------------------------------- #
 @app.post("/api/generate")
 async def generate(
-    image: UploadFile = File(...),
+    image: Optional[UploadFile] = File(None),
+    sheet: Optional[UploadFile] = File(None),
     sam_checkpoint: str = Form(""),
     depth_checkpoint: str = Form(""),
     device: str = Form("auto"),
     sam_model_type: str = Form("vit_h"),
     max_segments: int = Form(12),
+    prior_weight: float = Form(0.6),
+    fg_depth_thresh: float = Form(0.15),
+    ground: bool = Form(True),
 ) -> JSONResponse:
-    """Run the recognition pipeline on an uploaded image and return a ``.cgb``."""
+    """Run the recognition pipeline on an uploaded image and return a ``.cgb``.
+
+    If a 2x2 multi-view ``sheet`` is also uploaded, the **precision** (multi-view
+    space-carving) path is used instead of the single-image draft path.
+    """
     sam_ckpt = sam_checkpoint.strip() or DEFAULT_SAM_CHECKPOINT
     depth_ckpt = depth_checkpoint.strip() or DEFAULT_DEPTH_CHECKPOINT
     if not sam_ckpt:
@@ -130,15 +138,33 @@ async def generate(
     if not Path(sam_ckpt).exists():
         raise HTTPException(status_code=400, detail=f"SAM checkpoint not found: {sam_ckpt}")
 
-    suffix = Path(image.filename or "upload.png").suffix or ".png"
+    has_image = image is not None and image.filename
+    has_sheet = sheet is not None and sheet.filename
+    if not has_image and not has_sheet:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide a single image and/or a 2x2 multi-view sheet.",
+        )
+
     with tempfile.TemporaryDirectory(prefix="cubegb_studio_") as tmp:
-        img_path = Path(tmp) / f"input{suffix}"
-        img_path.write_bytes(await image.read())
         out_path = Path(tmp) / "result.cgb"
+
+        img_path = None
+        if has_image:
+            suffix = Path(image.filename).suffix or ".png"
+            img_path = Path(tmp) / f"input{suffix}"
+            img_path.write_bytes(await image.read())
+
+        sheet_path = None
+        if has_sheet:
+            sheet_suffix = Path(sheet.filename).suffix or ".png"
+            sheet_path = Path(tmp) / f"sheet{sheet_suffix}"
+            sheet_path.write_bytes(await sheet.read())
 
         # Lazy import: keeps the server alive without the recognition stack.
         try:
             from recognition.fit import image_to_cgb
+            from recognition.multiview import image_to_cgb_multiview
         except ImportError as exc:
             raise HTTPException(
                 status_code=400,
@@ -151,17 +177,29 @@ async def generate(
 
         dev = None if device in ("", "auto") else device
         try:
-            # image_to_cgb returns a small SUMMARY and writes the full .cgb
-            # document to out_path — load that document to return to the client.
-            summary = image_to_cgb(
-                str(img_path),
-                str(out_path),
-                sam_checkpoint=sam_ckpt,
-                depth_checkpoint=depth_ckpt or None,
-                device=dev,
-                sam_model_type=sam_model_type,
-                max_segments=int(max_segments),
-            )
+            if sheet_path is not None:
+                # Precision mode: multi-view 2x2 sheet -> space carving.
+                summary = image_to_cgb_multiview(
+                    str(sheet_path), str(out_path),
+                    sam_checkpoint=sam_ckpt, device=dev,
+                    sam_model_type=sam_model_type,
+                    max_segments=int(max_segments),
+                    prior_weight=float(prior_weight),
+                    ground=bool(ground),
+                )
+            else:
+                # Draft mode: single image (returns a summary, writes the .cgb).
+                summary = image_to_cgb(
+                    str(img_path), str(out_path),
+                    sam_checkpoint=sam_ckpt,
+                    depth_checkpoint=depth_ckpt or None,
+                    device=dev,
+                    sam_model_type=sam_model_type,
+                    max_segments=int(max_segments),
+                    prior_weight=float(prior_weight),
+                    fg_depth_thresh=float(fg_depth_thresh),
+                    ground=bool(ground),
+                )
         except HTTPException:
             raise
         except Exception as exc:  # surface model/runtime errors to the UI

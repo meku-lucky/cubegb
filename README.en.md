@@ -75,6 +75,65 @@ cubegb/
 └── docs/               # documentation
 ```
 
+## What is it for?
+
+CubeGB helps a **3D artist turn concept art into an editable, primitive-based
+"first-pass blockout"** before diving into detailed modelling.
+
+- **Blockout / greyboxing** — lock in proportions, silhouette and volume with
+  primitives first; a human refines the details.
+- **Hard-surface props & environments** — furniture, buildings, machines,
+  weapons, chests, … (organic forms like faces/animals are out of scope).
+- **Editability first** — unlike the dense meshes/splats from Hunyuan3D / TRELLIS,
+  the output is KB-sized, axis-aligned, named primitives you can grab and tweak
+  immediately in Blender.
+
+## How an image becomes a `.cgb`
+
+There are two paths; both converge on the same back end (**fit primitives →
+`.cgb`**).
+
+### 1) Single image (draft)
+
+![single-view pipeline](images/pipeline-single-view.png)
+
+1. **Segment parts** — Segment Anything (SAM) splits the art into meaningful part
+   masks (background removed, over-segmentation cleaned up).
+2. **Estimate depth** — Depth Anything V2 produces a monocular depth map; each
+   part is back-projected into a 3D point cloud.
+3. **Fit primitives** — a cube / cylinder / cone / sphere is fitted per part. The
+   **type is decided primarily from the 2D silhouette** (circularity, aspect,
+   taper) — monocular depth alone can't tell a cube from a cylinder — then the
+   pose is snapped to the world axes and the model is dropped onto the ground
+   (`y=0`).
+
+A single image only shows the front, so the **back and thickness are guessed** —
+great for a fast draft.
+
+### 2) Multi-view 2×2 sheet (precision, optional)
+
+![multi-view pipeline](images/pipeline-multi-view.png)
+
+Supply front / side / back / top **as one 2×2 sheet** and the shape is *measured*
+instead of guessed.
+
+1. **Per-view silhouettes** — extract the object silhouette in each cell (blank
+   cells are skipped, so accuracy scales with *how many faces you provide*).
+2. **Space carving** — intersect the silhouettes at their known angles to carve a
+   **voxel solid (visual hull)**. Thickness and footprint are measured for real
+   (note the rounded lid surviving in the *side projection* above).
+3. **Fit primitives** — the carved solid is turned into primitives the same way
+   and saved as `.cgb`.
+
+The blockout produced from the input above:
+
+<p align="center"><img src="images/hero-treasure-chest.png" alt="treasure-chest blockout" width="420"></p>
+
+> Thin objects that collapse into a single blob from one image (e.g. a blade)
+> keep their thickness with multi-view (blade thickness: single-view ≈ 0.69 →
+> multi-view ≈ 0.03). In Studio, just add an **optional 2×2 sheet** alongside the
+> main image and the precision path kicks in automatically.
+
 ## Install
 
 CubeGB has a light **core** (format + baker + viewer tooling) and a heavy
@@ -218,6 +277,7 @@ without any ML; Phases 4–6 add recognition and packaging.
 | 5 | primitive fitting & pose normalization → `.cgb` | ✅ code (needs weights) |
 | 6 | ComfyUI custom nodes | ✅ |
 | — | CubeGB Studio (all-in-one web GUI, beyond the original spec) | ✅ view/export tested |
+| — | Multi-view 2×2 sheet precision mode (space carving → primitives) | ✅ tested |
 
 Run the test suite:
 

@@ -42,6 +42,15 @@ ENV/
 *.ply
 !samples/**
 
+# Recognition eval/debug output + scratch artifacts (regenerate via
+# recognition.debug and the test_images/_synth.py / _fetch.py scripts).
+/debug_out/
+/test_result*.cgb
+/test_scene.png
+/test_images/*.png
+/test_images/*.jpg
+/test_images/*.jpeg
+
 # OS / editor
 .DS_Store
 Thumbs.db

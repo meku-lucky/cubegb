@@ -331,11 +331,11 @@ def _fit_cone(
     if base_radius < 1e-6:
         return None, 1.0
 
-    # Taper strength: radius change across the height vs. the base radius.
-    taper = abs(a) * height / base_radius
-    if taper < 0.35:  # not tapered enough — let the cylinder win instead
-        return None, 1.0
-
+    # Residual of the linear radius(t) model, normalised by the base radius.
+    # We always return a candidate (no hard taper gate) and let the combined
+    # 2D-prior + 3D-residual selection in :func:`fit_primitive` decide cone vs
+    # cylinder — the 2D silhouette taper is a more reliable cone cue than the
+    # noisy monocular-depth taper on its own.
     residual = float(np.sqrt(np.mean((radial - pred) ** 2))) / base_radius
     # cgb cone: base (radius r) at y=-h/2, apex at y=+h/2. Our fit gives the
     # widest end; orientation alignment is handled by the axis→Y mapping later.
@@ -373,13 +373,23 @@ def fit_primitive(
     points: np.ndarray,
     *,
     color: tuple[float, float, float] = DEFAULT_COLOR,
+    shape_prior: Optional[dict] = None,
+    prior_weight: float = 0.6,
 ) -> Optional[FitResult]:
     """Fit the best primitive to a single segment cloud.
 
-    Tries cube / cylinder / cone / sphere and returns the lowest-residual
+    Tries cube / cylinder / cone / sphere and returns the best
     :class:`FitResult`, or ``None`` if the cloud is too small to fit (< 16 pts).
     Pose is PCA-normalised with world-axis snapping, and the camera-facing-away
     depth is padded via :func:`_recover_hidden_depth`.
+
+    Type selection combines the **3D fit residual** with an optional **2D
+    silhouette prior** (:func:`recognition.shape2d.classify`). Monocular depth
+    is too flat to tell a cube from a cylinder reliably, and a cone's taper reads
+    far more cleanly in the 2D outline than in the noisy cloud — so when a
+    ``shape_prior`` (``{type: weight}``) is given it is blended with the
+    residual-based fit score (``prior_weight`` controls the mix). Without a prior
+    the behaviour is the classic lowest-residual pick.
     """
     points = np.asarray(points, dtype=np.float64)
     if points.shape[0] < 16:
@@ -434,9 +444,21 @@ def fit_primitive(
         FitResult("sphere", tuple(center), (0.0, 0.0, 0.0), sph_params, sph_res, color)
     )
 
-    # Pick the lowest normalised residual, then apply occlusion recovery to the
-    # winner so single-view shells become solid blockout parts.
-    best = min(candidates, key=lambda c: c.residual)
+    # Combine the 3D residual with the optional 2D shape prior. fit_score maps a
+    # residual (lower = better) into [0, 1]; combined score trades it off against
+    # the prior. Without a prior this reduces to the lowest-residual pick.
+    def fit_score(res: float) -> float:
+        return max(0.0, 1.0 - min(res, 1.0))
+
+    if shape_prior:
+        w = max(0.0, min(1.0, prior_weight))
+
+        def score(c: FitResult) -> float:
+            return w * float(shape_prior.get(c.prim_type, 0.0)) + (1 - w) * fit_score(c.residual)
+
+        best = max(candidates, key=score)
+    else:
+        best = min(candidates, key=lambda c: c.residual)
     return _apply_occlusion_recovery(best, axes, visible_he)
 
 
@@ -480,6 +502,116 @@ def _builder_for(fit: FitResult, prim_id: str):
     raise ValueError(f"unknown primitive type: {fit.prim_type!r}")
 
 
+def _adjacent(a: np.ndarray, b: np.ndarray, *, grow: int = 3) -> bool:
+    """True if mask ``a`` (grown by ``grow`` px) touches mask ``b``.
+
+    Cheap shift-based dilation (no scipy): a thin gap is bridged, a real gap
+    between separate parts is not — so coplanar slices of one face register as
+    adjacent while two legs with a gap do not.
+    """
+    grown = a.copy()
+    for _ in range(grow):
+        g = grown.copy()
+        g[1:, :] |= grown[:-1, :]
+        g[:-1, :] |= grown[1:, :]
+        g[:, 1:] |= grown[:, :-1]
+        g[:, :-1] |= grown[:, 1:]
+        grown = g
+    return bool(np.logical_and(grown, b).any())
+
+
+def _merge_coplanar_parts(
+    masks: list,
+    depth: np.ndarray,
+    *,
+    depth_tol: float = 0.07,
+    min_solidity: float = 0.90,
+    max_passes: int = 8,
+) -> list:
+    """Merge masks that are slices of one flat face: adjacent, at the same depth,
+    and whose union stays near-convex.
+
+    This fuses e.g. a chest's front panels (split by decorative bands) into one
+    body, without merging genuinely separate parts: a seat + leg union is
+    L-shaped (low solidity) and two legs have a gap (not adjacent), so both are
+    left alone. Depth co-planarity (median depth within ``depth_tol`` of the
+    scene's depth range) stops a protruding lock or a domed lid from being
+    absorbed. No-op when cv2 is missing (``_solidity`` returns ``-1``).
+    """
+    from .segment import Mask, _bbox_from_mask, _solidity
+
+    if _solidity(masks[0].mask) < 0:  # cv2 unavailable
+        return masks
+
+    d = np.asarray(depth, dtype=np.float64)
+    lo, hi = float(d.min()), float(d.max())
+    rng = max(hi - lo, 1e-9)
+
+    def med(m) -> float:
+        return (float(np.median(d[np.asarray(m.mask, dtype=bool)])) - lo) / rng
+
+    masks = list(masks)
+    for _ in range(max_passes):
+        merged_any = False
+        for i in range(len(masks)):
+            for j in range(i + 1, len(masks)):
+                a, b = masks[i], masks[j]
+                if abs(med(a) - med(b)) > depth_tol:
+                    continue
+                if not _adjacent(a.mask, b.mask):
+                    continue
+                union = np.logical_or(a.mask, b.mask)
+                if _solidity(union) < min_solidity:
+                    continue
+                masks[i] = Mask(
+                    mask=union, area=int(union.sum()), bbox=_bbox_from_mask(union),
+                    predicted_iou=max(a.predicted_iou, b.predicted_iou),
+                    point_coords=list(a.point_coords) + list(b.point_coords),
+                )
+                del masks[j]
+                merged_any = True
+                break
+            if merged_any:
+                break
+        if not merged_any:
+            break
+    return masks
+
+
+def _lowest_y(fit: "FitResult") -> float:
+    """World-space minimum Y of a fitted primitive (for ground snapping).
+
+    Cube: exact, over its 8 oriented corners. Round primitives: conservative
+    ``position.y - vertical_half`` where the half-extent is the larger of the
+    radius and the axial half-height (covers any axis tilt for a blockout).
+    """
+    px, py, pz = fit.position
+    if fit.prim_type == "cube":
+        sx, sy, sz = fit.params["size"]
+        R = _euler_xyz_to_matrix(fit.rotation_euler)
+        corners = np.array([
+            [dx * sx / 2, dy * sy / 2, dz * sz / 2]
+            for dx in (-1, 1) for dy in (-1, 1) for dz in (-1, 1)
+        ])
+        return float((corners @ R.T)[:, 1].min() + py)
+    if fit.prim_type == "sphere":
+        return float(py - fit.params["radius"])
+    half = max(fit.params.get("radius", 0.0), fit.params.get("height", 0.0) / 2.0)
+    return float(py - half)
+
+
+def _euler_xyz_to_matrix(euler: tuple[float, float, float]) -> np.ndarray:
+    """Inverse of :func:`_rotation_to_euler_xyz` (R = Rx · Ry · Rz)."""
+    rx, ry, rz = euler
+    cx, sx = math.cos(rx), math.sin(rx)
+    cy, sy = math.cos(ry), math.sin(ry)
+    cz, sz = math.cos(rz), math.sin(rz)
+    Rx = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
+    Ry = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]])
+    Rz = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]])
+    return Rx @ Ry @ Rz
+
+
 def build_document(
     fits: list[FitResult],
     *,
@@ -509,11 +641,29 @@ def image_to_cgb(
     max_segments: int = 12,
     fov_deg: float = 55.0,
     target_size: float = 1.5,
+    prior_weight: float = 0.6,
+    fg_depth_thresh: float = 0.15,
+    ground: bool = True,
 ) -> dict:
     """Run the full image → ``.cgb`` pipeline and save the result.
 
-    Stages: segment (SAM) → depth (Depth Anything V2 / MiDaS) → back-project →
-    fit primitives → assemble + validate + save.
+    Stages: segment (SAM) → depth (Depth Anything V2 / MiDaS) → foreground
+    filter → back-project → fit primitives → ground → assemble + validate + save.
+
+    Parameters of note
+    ------------------
+    prior_weight:
+        How much the 2D silhouette type prior counts vs. the 3D residual when
+        choosing each primitive's type (see :func:`fit_primitive`).
+    fg_depth_thresh:
+        Drop masks whose median depth falls in the far ``[0, fg_depth_thresh]``
+        band of the scene — removes busy-photo background chunks that survive
+        the border test. Kept conservative by default so clean concept art
+        (flat-ish depth) loses no real parts; raise it for busy photos. ``0``
+        disables. Never drops every mask.
+    ground:
+        Translate the finished blockout so its lowest point rests on ``y = 0``
+        (a modeller-friendly ground plane).
 
     Returns a small summary ``dict`` (output path and per-primitive types/
     residuals). Raises a clear :class:`RuntimeError` if model weights or heavy
@@ -521,7 +671,7 @@ def image_to_cgb(
     """
     # Local imports keep heavy deps lazy and avoid import cycles at module load.
     from .segment import Segmenter, load_image_rgb
-    from .depth import DepthEstimator, default_intrinsics, backproject
+    from .depth import DepthEstimator, default_intrinsics, backproject_scene
 
     image_rgb = load_image_rgb(image_path)
     h, w = image_rgb.shape[:2]
@@ -544,12 +694,58 @@ def image_to_cgb(
     depth = depth_estimator.estimate(image_rgb)
     intrinsics = default_intrinsics(w, h, fov_deg=fov_deg)
 
-    # 3 + 4. Back-project each mask and fit a primitive.
+    # 2b. Foreground filter. The depth map is "larger = nearer", so background
+    # masks (far) have a low median. Drop masks whose median depth sits in the
+    # far band — this clears busy-photo background chunks (city/ground/sky) that
+    # are not full-frame enough for the border test. Guarded so we never drop
+    # every mask (a flat-depth concept art keeps all of them).
+    if fg_depth_thresh > 0.0 and len(masks) > 1:
+        d_lo, d_hi = float(depth.min()), float(depth.max())
+        if d_hi - d_lo > 1e-9:
+            def med_frac(m) -> float:
+                vals = depth[np.asarray(m.mask, dtype=bool)]
+                return (float(np.median(vals)) - d_lo) / (d_hi - d_lo)
+            fg = [m for m in masks if med_frac(m) >= fg_depth_thresh]
+            if fg:  # keep the filter from emptying the scene
+                masks = fg
+
+    # 2c. Merge coplanar, adjacent, convex-union slices of one face into a single
+    # part (e.g. a chest's banded front), so decoration does not explode the part
+    # count. Distinct parts (L-shaped or gapped) are left untouched.
+    if len(masks) > 1:
+        masks = _merge_coplanar_parts(masks, depth)
+
+    # 3. Back-project the WHOLE scene into one shared world frame, then apply a
+    # single global recentre + scale across all kept masks. Doing this per
+    # segment (the old path) stripped each part's relative position and size,
+    # stacking every primitive at the origin at a uniform ~target_size — so the
+    # blockout came out as a pile of intersecting same-sized boxes. Here the
+    # depth range and the metric scale are fixed *once* over the union of object
+    # masks, so segments keep their true relative placement and proportions.
+    union = np.zeros((h, w), dtype=bool)
+    for m in masks:
+        union |= np.asarray(m.mask, dtype=bool)
+
+    world_grid = backproject_scene(depth, intrinsics, valid_mask=union)
+    scene_pts = world_grid[union]
+    scene_center = scene_pts.mean(axis=0)
+    extent = scene_pts.max(axis=0) - scene_pts.min(axis=0)
+    longest = float(extent.max())
+    scale = (target_size / longest) if longest > 1e-9 else 1.0
+    world_grid = (world_grid - scene_center) * scale
+
+    # 4. Slice each mask out of the shared frame and fit a primitive, using the
+    # 2D silhouette as a type prior (depth alone can't tell cube from cylinder).
+    from .shape2d import classify as classify_shape
+
     fits: list[FitResult] = []
     for m in masks:
-        points = backproject(depth, m.mask, intrinsics, target_size=target_size)
+        points = world_grid[np.asarray(m.mask, dtype=bool)]
         color = _mean_color(image_rgb, m.mask)
-        fit = fit_primitive(points, color=color)
+        prior = classify_shape(m.mask).get("prior")
+        fit = fit_primitive(
+            points, color=color, shape_prior=prior, prior_weight=prior_weight,
+        )
         if fit is not None:
             fits.append(fit)
 
@@ -557,6 +753,22 @@ def image_to_cgb(
         raise RuntimeError(
             "No primitives could be fit (all segment clouds were too small)."
         )
+
+    # 4b. Ground the blockout: drop it so the lowest *primitive* rests on y=0.
+    # Grounding on the fitted geometry (not the raw cloud) avoids a floating
+    # result when the lowest cloud points belonged to a mask that produced no
+    # primitive (e.g. too few points to fit).
+    if ground:
+        y_min = min(_lowest_y(f) for f in fits)
+        if np.isfinite(y_min):
+            fits = [
+                FitResult(
+                    f.prim_type,
+                    (f.position[0], f.position[1] - y_min, f.position[2]),
+                    f.rotation_euler, f.params, f.residual, f.color,
+                )
+                for f in fits
+            ]
 
     # 5. Assemble, validate, save.
     doc = build_document(fits, source_image=str(image_path))

@@ -58,10 +58,11 @@
   details[open] > summary { border-bottom: 1px solid var(--border); color: var(--text); }
   details .inner { padding: 6px 11px 11px; }
 
-  #imgDrop { border: 2px dashed var(--border); border-radius: 10px; padding: 16px;
+  .drop { border: 2px dashed var(--border); border-radius: 10px; padding: 16px;
     text-align: center; color: var(--text-dim); cursor: pointer; transition: border-color .15s, background .15s; }
-  #imgDrop:hover, #imgDrop.drag { border-color: var(--accent); background: rgba(91,157,255,.07); }
-  #imgPreview { max-width: 100%; max-height: 150px; border-radius: 8px; margin-top: 10px; display: none; }
+  .drop:hover, .drop.drag { border-color: var(--accent); background: rgba(91,157,255,.07); }
+  .drop .preview { max-width: 100%; max-height: 150px; border-radius: 8px; margin-top: 10px; display: none; }
+  .drop .hint { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
 
   #genStatus { font-size: 12px; margin-top: 9px; min-height: 16px; }
   .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--border);
@@ -119,19 +120,31 @@
     <div class="scroll">
       <div id="capNote" class="cap-note">기능 확인 중…</div>
 
-      <!-- Step 1: image -->
+      <!-- Step 1: single image -->
       <div class="step">
-        <p class="step-title"><span class="n">1</span> 이미지 선택</p>
-        <div id="imgDrop">
+        <p class="step-title"><span class="n">1</span> 단일 이미지 선택</p>
+        <div id="imgDrop" class="drop">
           <div>이미지를 드래그하거나 클릭해서 선택</div>
-          <img id="imgPreview" alt="preview" />
+          <img id="imgPreview" class="preview" alt="preview" />
+          <div class="hint">한 장으로 빠른 초안 생성 (뒷면·두께는 추정)</div>
         </div>
         <input id="imgInput" type="file" accept="image/*" style="display:none" />
       </div>
 
-      <!-- Step 2: generate -->
+      <!-- Step 2: multi-view sheet -->
       <div class="step">
-        <p class="step-title"><span class="n">2</span> .cgb 생성</p>
+        <p class="step-title"><span class="n">2</span> 멀티뷰 이미지 선택 <span class="muted">(선택)</span></p>
+        <div id="sheetDrop" class="drop">
+          <div>2×2 멀티뷰 시트를 드래그하거나 클릭해서 선택</div>
+          <img id="sheetPreview" class="preview" alt="sheet preview" />
+          <div class="hint">front / side / back / top 2×2 시트 → 공간 카빙으로 정밀 생성 (정확도↑)</div>
+        </div>
+        <input id="sheetInput" type="file" accept="image/*" style="display:none" />
+      </div>
+
+      <!-- Step 3: generate -->
+      <div class="step">
+        <p class="step-title"><span class="n">3</span> .cgb 생성</p>
         <button id="genBtn" class="btn" disabled>생성 (Generate)</button>
         <div id="genStatus"></div>
         <details id="genOpts">
@@ -153,8 +166,13 @@
               <option value="vit_l">vit_l</option>
               <option value="vit_b">vit_b</option>
             </select>
-            <label class="field">최대 세그먼트 수</label>
+            <label class="field">최대 부위 수</label>
             <input id="maxSeg" type="number" value="12" min="1" max="64" />
+            <label class="field">형태 prior 가중치 (0=깊이만, 1=실루엣만)</label>
+            <input id="priorWeight" type="number" value="0.6" min="0" max="1" step="0.05" />
+            <label class="field">배경 제거 강도 (0=끔, 사진은 0.3~0.5)</label>
+            <input id="fgDepth" type="number" value="0.15" min="0" max="0.9" step="0.05" />
+            <label class="field"><input id="ground" type="checkbox" checked /> 바닥(y=0)에 안착</label>
           </div>
         </details>
         <div class="btn-row" style="margin-top:10px">
@@ -172,7 +190,7 @@
 
       <!-- Step 3: export -->
       <div class="step">
-        <p class="step-title"><span class="n">3</span> 내보내기</p>
+        <p class="step-title"><span class="n">4</span> 내보내기</p>
         <label class="field">파일 이름</label>
         <input id="exportName" type="text" value="cubegb" />
         <div class="btn-row" style="margin-top:10px">
