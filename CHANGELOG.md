@@ -23,6 +23,9 @@ All notable changes to CubeGB are documented here. The format follows
 - **ComfyUI nodes** — CubeGB Generate / Save / Bake / Preview.
 - **CubeGB Studio** — all-in-one local web GUI (FastAPI + three.js):
   image → `.cgb` → 3D view → export, on one page (`python -m app.server`).
+  three.js is **vendored locally** (`app/static/vendor/three`, MIT) so Studio
+  needs no CDN/internet; the 3D viewer is dynamically imported so health/load/
+  export keep working even if it fails to load.
 - Documentation and pytest suite (format + baker + Studio backend).
 
 [Unreleased]: https://github.com/cubegb/cubegb

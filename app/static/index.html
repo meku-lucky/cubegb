@@ -196,11 +196,13 @@
   </main>
 </div>
 
+<!-- three.js is vendored locally (app/static/vendor/three) so Studio needs no
+     internet / CDN access. See app/static/vendor/three/README.md. -->
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+    "three": "/static/vendor/three/three.module.js",
+    "three/addons/": "/static/vendor/three/addons/"
   }
 }
 </script>

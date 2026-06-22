@@ -1,17 +1,21 @@
 // ===========================================================================
 // CubeGB Studio — frontend orchestration.
-// Wires the image → generate → 3D view → export flow to the FastAPI backend,
-// reusing CGBViewer (app/static/cgb-render.js) for the 3D view.
+// Wires the image → generate → 3D view → export flow to the FastAPI backend.
+//
+// Resilience: the 3D viewer (CGBViewer, which pulls in three.js) is loaded
+// *dynamically* and lazily. If that import fails — e.g. the vendored three.js is
+// missing or a CDN is blocked — the rest of the app (health check, .cgb loading,
+// primitive list, export) still works; only the 3D preview degrades to a message.
 // ===========================================================================
-import { CGBViewer } from '/static/cgb-render.js';
 
 const $ = (id) => document.getElementById(id);
 
 // --- state ---
-let viewer = null;
-let currentDoc = null;     // the .cgb document currently shown
-let imageFile = null;      // selected input image File
-let entries = [];
+let viewer = null;          // CGBViewer instance, or null if 3D unavailable
+let viewerStatus = 'loading'; // 'loading' | 'ready' | 'failed'
+let currentDoc = null;      // the .cgb document currently shown
+let imageFile = null;       // selected input image File
+let entries = [];           // [{id, name, type, colorHex, mesh?}]
 
 // --- elements ---
 const vp3d = $('vp3d'), vpEmpty = $('vpEmpty');
@@ -24,13 +28,39 @@ const capNote = $('capNote');
 const toast = $('toast'), toastMsg = $('toastMsg');
 
 // ---------------------------------------------------------------------------
-// Viewer init
+// Small helpers that DO NOT depend on three.js (so they work even if the 3D
+// viewer fails to load).
 // ---------------------------------------------------------------------------
-viewer = new CGBViewer(vp3d, {
-  onSelect: (id) => {
-    [...primList.children].forEach((li) => li.classList.toggle('active', li.dataset.id === id));
-  },
-});
+function colorToHex(arr) {
+  const c = Array.isArray(arr) ? arr : [0.7, 0.7, 0.72];
+  const h = (v) => Math.max(0, Math.min(255, Math.round((v || 0) * 255)))
+    .toString(16).padStart(2, '0');
+  return '#' + h(c[0]) + h(c[1]) + h(c[2]);
+}
+
+function validateDocLocal(doc) {
+  if (doc == null || typeof doc !== 'object') throw new Error('JSON 객체가 아닙니다.');
+  if (doc.format !== 'cgb') {
+    throw new Error('CubeGB 파일이 아닙니다: "format":"cgb"가 필요하지만 '
+      + JSON.stringify(doc.format) + ' 입니다.');
+  }
+  if (!Array.isArray(doc.primitives)) throw new Error('잘못된 .cgb: "primitives"는 배열이어야 합니다.');
+}
+
+function entriesFromDoc(doc) {
+  return doc.primitives.map((p, i) => ({
+    id: p.id != null ? p.id : ('idx_' + i),
+    name: p.name || p.id || ('primitive_' + i),
+    type: p.type,
+    colorHex: colorToHex(p.material && p.material.color),
+    mesh: null,
+  }));
+}
+
+function setViewportMessage(big, small) {
+  vpEmpty.innerHTML = '<div class="big">' + big + '</div><div>' + small + '</div>';
+  vpEmpty.style.display = 'flex';
+}
 
 // ---------------------------------------------------------------------------
 // Toast / status helpers
@@ -38,6 +68,35 @@ viewer = new CGBViewer(vp3d, {
 function showError(msg) { toastMsg.textContent = msg; toast.classList.add('show'); }
 $('toastClose').addEventListener('click', () => toast.classList.remove('show'));
 function setStatus(html) { genStatus.innerHTML = html; }
+
+// ---------------------------------------------------------------------------
+// Lazy 3D viewer init — dynamic import so a failure never breaks the app.
+// ---------------------------------------------------------------------------
+async function initViewer() {
+  try {
+    const mod = await import('/static/cgb-render.js'); // pulls in three.js
+    viewer = new mod.CGBViewer(vp3d, {
+      onSelect: (id) => {
+        [...primList.children].forEach((li) => li.classList.toggle('active', li.dataset.id === id));
+      },
+    });
+    viewerStatus = 'ready';
+    // If a document was already loaded before the viewer finished importing,
+    // render it now.
+    if (currentDoc) {
+      try { entries = viewer.loadDoc(currentDoc); rebuildList(); vpEmpty.style.display = 'none'; }
+      catch (e) { /* keep the fallback list already shown */ }
+    }
+  } catch (e) {
+    viewerStatus = 'failed';
+    setViewportMessage(
+      '3D 미리보기를 사용할 수 없습니다',
+      '3D 라이브러리를 불러오지 못했습니다(오프라인이거나 차단됨). ' +
+      '프리미티브 목록과 내보내기는 정상 사용할 수 있습니다.'
+    );
+    console.error('CGBViewer load failed:', e);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Capabilities
@@ -60,7 +119,10 @@ async function checkHealth() {
     capNote.innerHTML = '<span class="err">●</span> 서버 상태 확인 실패: ' + e.message;
   }
 }
+
+// Kick off health + viewer independently; neither blocks the other.
 checkHealth();
+initViewer();
 
 // ---------------------------------------------------------------------------
 // Step 1 — image selection
@@ -68,8 +130,7 @@ checkHealth();
 function pickImage(file) {
   if (!file) return;
   imageFile = file;
-  const url = URL.createObjectURL(file);
-  imgPreview.src = url;
+  imgPreview.src = URL.createObjectURL(file);
   imgPreview.style.display = 'block';
   genBtn.disabled = false;
 }
@@ -135,14 +196,30 @@ cgbInput.addEventListener('change', (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// Apply a .cgb doc to the viewer + UI
+// Apply a .cgb doc to the viewer + UI. Works with or without the 3D viewer.
 // ---------------------------------------------------------------------------
 function applyDoc(doc) {
   try {
-    entries = viewer.loadDoc(doc);
+    validateDocLocal(doc);
   } catch (e) { showError('표시할 수 없는 .cgb: ' + e.message); return; }
+
   currentDoc = doc;
-  vpEmpty.style.display = 'none';
+
+  // 3D render if the viewer is available; otherwise keep a clear message.
+  if (viewer) {
+    try {
+      entries = viewer.loadDoc(doc);
+      vpEmpty.style.display = 'none';
+    } catch (e) {
+      entries = entriesFromDoc(doc);
+      showError('3D 렌더 실패(목록·내보내기는 사용 가능): ' + e.message);
+    }
+  } else {
+    entries = entriesFromDoc(doc);
+    if (viewerStatus === 'loading') setViewportMessage('3D 미리보기 준비 중…', '잠시만요.');
+    // if 'failed', the failure message is already shown.
+  }
+
   rebuildList();
   dlCgb.disabled = dlGlb.disabled = dlObj.disabled = false;
 }
@@ -162,7 +239,8 @@ function rebuildList() {
     const tp = document.createElement('div'); tp.className = 'type'; tp.textContent = entry.type;
     meta.appendChild(nm); meta.appendChild(tp);
     li.appendChild(sw); li.appendChild(meta);
-    li.addEventListener('click', () => viewer.select(entry.id));
+    // Clicking focuses the primitive only when the 3D viewer is available.
+    if (viewer) li.addEventListener('click', () => viewer.select(entry.id));
     primList.appendChild(li);
   });
 }

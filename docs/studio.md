@@ -18,7 +18,14 @@ pip install -r requirements-recognition.txt   # see docs/recognition.en.md
 python -m app.server          # or, if installed:  cubegb-studio
 ```
 
-It opens `http://127.0.0.1:8000/` in your browser. Options:
+It opens `http://127.0.0.1:8000/` in your browser. **No internet is required** —
+three.js is vendored locally under `app/static/vendor/three` (MIT), so Studio
+works on offline / firewalled machines where CDNs like `unpkg.com` are blocked.
+If the 3D viewer ever fails to load anyway, the rest of the UI (health check,
+`.cgb` loading, primitive list, export) keeps working and the viewport shows a
+clear message.
+
+Options:
 
 ```bash
 python -m app.server --host 127.0.0.1 --port 8000 --no-browser
