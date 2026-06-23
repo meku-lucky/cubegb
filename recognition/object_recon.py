@@ -137,6 +137,8 @@ def image_to_cgb_objects(
     ground: bool = True,
     per_object_prims: int = 5,
     voxel_out_path: Optional[str] = None,
+    masks=None,
+    select_ids=None,
 ) -> dict:
     """Object-by-object reconstruction from a single image. **Experimental.**
 
@@ -161,11 +163,15 @@ def image_to_cgb_objects(
     img = load_image_rgb(image_path)
     H, W = img.shape[:2]
 
-    masks = Segmenter(sam_checkpoint, model_type=sam_model_type, device=device).segment(
-        img, max_masks=max_objects)
+    if masks is None:
+        masks = Segmenter(sam_checkpoint, model_type=sam_model_type, device=device).segment(
+            img, max_masks=max_objects)
     objects = partition_objects(masks, H, W)
+    if select_ids is not None:                      # keep only the chosen objects
+        want = set(int(i) for i in select_ids)
+        objects = [(i, sel) for (i, sel) in objects if int(i) in want]
     if not objects:
-        raise RuntimeError("No objects segmented — try a clearer image.")
+        raise RuntimeError("No objects selected/segmented — pick at least one part.")
 
     depth = DepthEstimator(depth_checkpoint, device=device).estimate(img)
     dn = depth.astype(np.float64)

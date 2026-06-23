@@ -60,3 +60,10 @@ def test_generate_without_checkpoint_is_clear_error():
                     data={"device": "cpu"})
     assert r.status_code == 400
     assert "checkpoint" in r.json()["detail"].lower()
+
+
+def test_segment_without_checkpoint_is_clear_error():
+    r = client.post("/api/segment", files={"image": ("x.png", b"data", "image/png")},
+                    data={"device": "cpu", "sam_checkpoint": "/no/such.pth"})
+    assert r.status_code == 400
+    assert "checkpoint" in r.json()["detail"].lower()

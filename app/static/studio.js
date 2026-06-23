@@ -27,6 +27,8 @@ const vpPrims = $('vpPrims'), vpVoxel = $('vpVoxel'), vpPure = $('vpPure'), vpOb
 const emptyPrims = $('emptyPrims'), emptyVoxel = $('emptyVoxel');
 const emptyPure = $('emptyPure'), emptyObject = $('emptyObject');
 const imgDrop = $('imgDrop'), imgInput = $('imgInput'), imgPreview = $('imgPreview');
+const segBtn = $('segBtn'), segStatus = $('segStatus'), segList = $('segList');
+let selectedIds = new Set();
 const sheetDrop = $('sheetDrop'), sheetInput = $('sheetInput'), sheetPreview = $('sheetPreview');
 const genBtn = $('genBtn'), genStatus = $('genStatus');
 const loadBtn = $('loadBtn'), cgbInput = $('cgbInput');
@@ -135,8 +137,55 @@ function wireDrop(drop, input, preview, onPick) {
   function onPickInternal(file) { preview.src = URL.createObjectURL(file); preview.style.display = 'block'; }
   return onPickInternal;
 }
-const showImg = wireDrop(imgDrop, imgInput, imgPreview, (f) => { imageFile = f; showImg(f); genBtn.disabled = false; });
+const showImg = wireDrop(imgDrop, imgInput, imgPreview, (f) => {
+  imageFile = f; showImg(f); genBtn.disabled = false;
+  segBtn.style.display = 'flex'; segList.innerHTML = ''; segStatus.textContent = '';
+  selectedIds = new Set(); updateGenLabel();
+});
 const showSheet = wireDrop(sheetDrop, sheetInput, sheetPreview, (f) => { sheetFile = f; showSheet(f); genBtn.disabled = false; });
+
+// ---------------------------------------------------------------------------
+// Segment the image into selectable parts (selective 3D-ification)
+// ---------------------------------------------------------------------------
+function updateGenLabel() {
+  genBtn.textContent = selectedIds.size > 0
+    ? `선택 ${selectedIds.size}개 부위 생성` : '생성 (Generate)';
+}
+segBtn.addEventListener('click', async () => {
+  if (!imageFile) return;
+  segBtn.disabled = true;
+  segStatus.innerHTML = '<span class="spinner"></span><span class="muted"> 세분화 중… (수십 초)</span>';
+  const fd = new FormData();
+  fd.append('image', imageFile);
+  fd.append('sam_checkpoint', $('samCkpt').value);
+  fd.append('device', $('device').value);
+  fd.append('sam_model_type', $('samType').value);
+  fd.append('max_objects', $('maxSeg').value);
+  try {
+    const res = await fetch('/api/segment', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+    renderSegList(data.objects);
+    segStatus.textContent = `부위 ${data.objects.length}개 — 3D화할 부위를 클릭해서 선택`;
+  } catch (e) { segStatus.innerHTML = '<span class="err">세분화 실패</span>'; showError(e.message); }
+  finally { segBtn.disabled = false; }
+});
+function renderSegList(objs) {
+  selectedIds = new Set(); segList.innerHTML = '';
+  objs.forEach((o) => {
+    const it = document.createElement('div');
+    it.className = 'seg-item';
+    it.title = `obj ${o.id} · ${o.area.toLocaleString()}px`;
+    it.innerHTML = `<span class="chk"></span><img src="${o.thumb}" alt="obj${o.id}" />`;
+    it.addEventListener('click', () => {
+      it.classList.toggle('sel');
+      if (it.classList.contains('sel')) selectedIds.add(o.id); else selectedIds.delete(o.id);
+      updateGenLabel();
+    });
+    segList.appendChild(it);
+  });
+  updateGenLabel();
+}
 
 // ---------------------------------------------------------------------------
 // Step 3 — generate OR load an existing .cgb
@@ -159,6 +208,9 @@ genBtn.addEventListener('click', async () => {
   fd.append('voxel_res', $('voxelRes').value);
   fd.append('flip_side', $('flipSide').checked);
   fd.append('flip_top', $('flipTop').checked);
+  if (selectedIds.size > 0 && imageFile && !sheetFile) {
+    fd.append('select_ids', JSON.stringify([...selectedIds]));
+  }
 
   try {
     const res = await fetch('/api/generate', { method: 'POST', body: fd });

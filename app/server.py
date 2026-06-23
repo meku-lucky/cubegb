@@ -28,6 +28,9 @@ Launch::
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
+import io
 import os
 import sys
 import tempfile
@@ -104,6 +107,90 @@ def health() -> JSONResponse:
 
 
 # --------------------------------------------------------------------------- #
+# Segment: image -> object list (for selective 3D-ification)
+# --------------------------------------------------------------------------- #
+# Cache the last few segmentations (image-bytes hash -> SAM masks) so /api/generate
+# can reuse them instead of re-running SAM.
+_SEG_CACHE: dict = {}
+_SEG_ORDER: list = []
+
+
+def _seg_cache_put(key: str, masks) -> None:
+    if key not in _SEG_CACHE:
+        _SEG_ORDER.append(key)
+        while len(_SEG_ORDER) > 4:
+            _SEG_CACHE.pop(_SEG_ORDER.pop(0), None)
+    _SEG_CACHE[key] = masks
+
+
+def _object_thumb(img, mask, *, size: int = 84) -> str:
+    """A small RGBA data-URI thumbnail of one object (masked crop)."""
+    import numpy as np
+    from PIL import Image
+
+    ys, xs = np.nonzero(mask)
+    if xs.size == 0:
+        return ""
+    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    crop = np.asarray(img)[y0:y1, x0:x1]
+    alpha = (np.asarray(mask)[y0:y1, x0:x1].astype(np.uint8) * 255)
+    rgba = np.dstack([crop, alpha])
+    im = Image.fromarray(rgba, "RGBA")
+    im.thumbnail((size, size), Image.LANCZOS)
+    buf = io.BytesIO()
+    im.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+@app.post("/api/segment")
+async def segment(
+    image: UploadFile = File(...),
+    sam_checkpoint: str = Form(""),
+    device: str = Form("auto"),
+    sam_model_type: str = Form("vit_h"),
+    max_objects: int = Form(12),
+) -> JSONResponse:
+    """Segment an image into selectable objects (id + thumbnail + area)."""
+    sam_ckpt = sam_checkpoint.strip() or DEFAULT_SAM_CHECKPOINT
+    if not sam_ckpt or not Path(sam_ckpt).exists():
+        raise HTTPException(status_code=400, detail="SAM checkpoint not found (set it in 생성 옵션).")
+
+    data = await image.read()
+    key = hashlib.sha1(data).hexdigest()
+    suffix = Path(image.filename or "x.png").suffix or ".png"
+    try:
+        from recognition.segment import Segmenter, load_image_rgb
+        from recognition.object_recon import partition_objects
+    except ImportError as exc:
+        raise HTTPException(status_code=400, detail=f"Recognition deps missing: {exc.name}")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        p = Path(tmp) / f"img{suffix}"
+        p.write_bytes(data)
+        img = load_image_rgb(str(p))
+    H, W = img.shape[:2]
+    dev = None if device in ("", "auto") else device
+    try:
+        masks = Segmenter(sam_ckpt, model_type=sam_model_type, device=dev).segment(
+            img, max_masks=int(max_objects))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Segmentation failed: {exc}")
+
+    _seg_cache_put(key, masks)
+    objects = []
+    for i, sel in partition_objects(masks, H, W):
+        import numpy as np
+        ys, xs = np.nonzero(sel)
+        objects.append({
+            "id": int(i), "area": int(sel.sum()),
+            "bbox": [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())],
+            "thumb": _object_thumb(img, sel),
+        })
+    objects.sort(key=lambda o: -o["area"])
+    return JSONResponse({"image_hash": key, "objects": objects})
+
+
+# --------------------------------------------------------------------------- #
 # Generate: image -> .cgb
 # --------------------------------------------------------------------------- #
 @app.post("/api/generate")
@@ -121,12 +208,22 @@ async def generate(
     voxel_res: int = Form(128),
     flip_side: bool = Form(False),
     flip_top: bool = Form(False),
+    select_ids: str = Form(""),
 ) -> JSONResponse:
     """Run the recognition pipeline on an uploaded image and return a ``.cgb``.
 
     If a 2x2 multi-view ``sheet`` is also uploaded, the **precision** (multi-view
-    space-carving) path is used instead of the single-image draft path.
+    space-carving) path is used. If ``select_ids`` (a JSON list of object ids from
+    ``/api/segment``) is given with a single image, only those objects are
+    reconstructed (object-by-object mode).
     """
+    import json as _json
+    sel_ids = None
+    if select_ids.strip():
+        try:
+            sel_ids = [int(i) for i in _json.loads(select_ids)]
+        except Exception:
+            sel_ids = None
     sam_ckpt = sam_checkpoint.strip() or DEFAULT_SAM_CHECKPOINT
     depth_ckpt = depth_checkpoint.strip() or DEFAULT_DEPTH_CHECKPOINT
     if not sam_ckpt:
@@ -153,10 +250,13 @@ async def generate(
         out_path = Path(tmp) / "result.cgb"
 
         img_path = None
+        img_hash = None
         if has_image:
             suffix = Path(image.filename).suffix or ".png"
             img_path = Path(tmp) / f"input{suffix}"
-            img_path.write_bytes(await image.read())
+            img_bytes = await image.read()
+            img_path.write_bytes(img_bytes)
+            img_hash = hashlib.sha1(img_bytes).hexdigest()
 
         sheet_path = None
         if has_sheet:
@@ -195,6 +295,18 @@ async def generate(
                     voxel_out_path=str(voxel_out),
                     flip_side=bool(flip_side),
                     flip_top=bool(flip_top),
+                )
+            elif sel_ids is not None:
+                # Object mode: reconstruct only the picked objects (reuse cached
+                # SAM masks from /api/segment) + emit the coloured voxel.
+                from recognition.object_recon import image_to_cgb_objects
+                summary = image_to_cgb_objects(
+                    str(img_path), str(out_path),
+                    sam_checkpoint=sam_ckpt, depth_checkpoint=depth_ckpt or None,
+                    device=dev, sam_model_type=sam_model_type,
+                    max_objects=int(max_segments), ground=bool(ground),
+                    voxel_out_path=str(voxel_out),
+                    masks=_SEG_CACHE.get(img_hash), select_ids=sel_ids,
                 )
             else:
                 # Draft mode: single image (returns a summary, writes the .cgb).

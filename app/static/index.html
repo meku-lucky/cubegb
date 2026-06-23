@@ -86,6 +86,19 @@
   #primList .type { font-size: 10.5px; color: var(--text-dim); }
   .empty { font-size: 12px; color: var(--text-dim); font-style: italic; padding: 4px 2px; }
 
+  /* ---- segmentation object picker ---- */
+  #segList { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+  .seg-item { position: relative; border: 1px solid var(--border); border-radius: 7px; overflow: hidden;
+    cursor: pointer; background: var(--panel-2); }
+  .seg-item img { width: 100%; height: 60px; object-fit: contain; display: block;
+    background: repeating-conic-gradient(#2a2f3a 0% 25%, #242832 0% 50%) 50% / 12px 12px; }
+  .seg-item.sel { outline: 2px solid var(--accent); border-color: var(--accent); }
+  .seg-item .chk { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 4px;
+    background: rgba(20,24,32,.85); border: 1px solid var(--border); text-align: center; }
+  .seg-item.sel .chk { background: var(--accent); border-color: var(--accent); }
+  .seg-item .chk::after { content: '✓'; color: #fff; font-size: 11px; line-height: 15px; display: none; }
+  .seg-item.sel .chk::after { display: block; }
+
   /* ---- viewport: 2x2 quad of debug panels ---- */
   #viewport { position: relative; flex: 1; height: 100%; }
   #quad { position: absolute; inset: 0; display: grid;
@@ -138,6 +151,9 @@
           <div class="hint">한 장으로 빠른 초안 생성 (뒷면·두께는 추정)</div>
         </div>
         <input id="imgInput" type="file" accept="image/*" style="display:none" />
+        <button id="segBtn" class="btn secondary" style="margin-top:8px;display:none">🔍 부위 세분화 (선택 3D화)</button>
+        <div id="segStatus" class="muted" style="font-size:11px;margin-top:5px"></div>
+        <div id="segList"></div>
       </div>
 
       <!-- Step 2: multi-view sheet -->
