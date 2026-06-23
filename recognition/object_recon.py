@@ -99,6 +99,211 @@ def reconstruct_object(
     return occ, colmap
 
 
+def partition_objects(masks, H: int, W: int, *, min_area_frac: float = 0.004) -> list:
+    """Turn overlapping SAM masks into a non-overlapping object label map.
+
+    SAM returns a hierarchy (a whole-figure mask plus its parts). Assigning each
+    pixel to the **smallest** mask that covers it makes parts win over the whole,
+    yielding a clean partition. Returns ``[(label_id, bool_mask)]`` for objects
+    above ``min_area_frac`` of the frame.
+    """
+    order = sorted(range(len(masks)), key=lambda i: int(masks[i].area))
+    labelmap = -np.ones((H, W), dtype=np.int32)
+    for i in order:
+        m = np.asarray(masks[i].mask, bool) & (labelmap < 0)
+        labelmap[m] = i
+    out = []
+    min_area = min_area_frac * H * W
+    for i in order:
+        sel = labelmap == i
+        if sel.sum() >= min_area:
+            out.append((i, sel))
+    return out
+
+
+def image_to_cgb_objects(
+    image_path: str,
+    out_path: str,
+    *,
+    sam_checkpoint: str,
+    depth_checkpoint: Optional[str] = None,
+    device: Optional[str] = None,
+    sam_model_type: str = "vit_h",
+    max_objects: int = 12,
+    res: int = 96,
+    depth_frac: float = 0.32,
+    depth_span: float = 0.55,
+    target_size: float = 1.5,
+    ground: bool = True,
+    per_object_prims: int = 5,
+    voxel_out_path: Optional[str] = None,
+) -> dict:
+    """Object-by-object reconstruction from a single image. **Experimental.**
+
+    Segment the image into non-overlapping objects, reconstruct each by
+    silhouette-extrude into a **shared** world grid (placed in depth by the depth
+    map), then fit primitives **per object** so distinct parts (cat / sword /
+    shield / armour / cape) stay clean and separated instead of fusing.
+
+    Caveat: monocular depth on flat/stylised concept art barely separates parts
+    in z, so the whole assembled scene comes out as a near-flat relief and thin
+    body parts fit as stray cylinders. Per-object reconstruction shines for an
+    **isolated** object (see :func:`reconstruct_object` — a prompted shield comes
+    out clean); good full-scene composition needs real per-object depth, e.g.
+    each object's silhouette across a multi-view sheet (future work).
+    """
+    import cgb
+
+    from .segment import Segmenter, load_image_rgb
+    from .depth import DepthEstimator
+    from .primfit import decompose_occupancy
+    from .fit import build_document, FitResult, _lowest_y
+    from .multiview import _voxprim_to_fit
+
+    img = load_image_rgb(image_path)
+    H, W = img.shape[:2]
+
+    masks = Segmenter(sam_checkpoint, model_type=sam_model_type, device=device).segment(
+        img, max_masks=max_objects)
+    objects = partition_objects(masks, H, W)
+    if not objects:
+        raise RuntimeError("No objects segmented — try a clearer image.")
+
+    depth = DepthEstimator(depth_checkpoint, device=device).estimate(img)
+    dn = depth.astype(np.float64)
+    dn = (dn - dn.min()) / (float(np.ptp(dn)) or 1.0)   # 0..1, larger = nearer
+
+    occ, objid, colmap = _place_objects(
+        img, objects, dn, res=res, depth_frac=depth_frac, depth_span=depth_span)
+    if not occ.any():
+        raise RuntimeError("Reconstruction produced an empty volume.")
+
+    world = (np.argwhere(occ) + 0.5) / res - 0.5
+    centroid = world.mean(0)
+    scale = target_size / max(float((world.max(0) - world.min(0)).max()), 1e-9)
+
+    def color_at(ix, iy, iz):
+        return colmap.get((ix, iy, iz), (0.6, 0.55, 0.5))
+
+    # Fit primitives PER object so parts don't merge.
+    fits: list = []
+    obj_summ = []
+    for oid, _ in objects:
+        sub = occ & (objid == oid)
+        n = int(sub.sum())
+        if n < 8:
+            continue
+        # colour a primitive by the mean colour of its object's voxels
+        ocol = _mean_obj_color(colmap, objid, oid)
+        k0 = len(fits)
+        for vp in decompose_occupancy(sub, max_prims=per_object_prims):
+            fits.append(_voxprim_to_fit(vp, centroid, scale, lambda cx, cy, _c=ocol: _c))
+        obj_summ.append({"object": int(oid), "voxels": n, "primitives": len(fits) - k0})
+
+    if not fits:
+        raise RuntimeError("No primitives could be fit.")
+
+    if ground:
+        y_min = min(_lowest_y(f) for f in fits)
+        if np.isfinite(y_min):
+            fits = [FitResult(f.prim_type,
+                              (f.position[0], f.position[1] - y_min, f.position[2]),
+                              f.rotation_euler, f.params, f.residual, f.color) for f in fits]
+
+    doc = build_document(fits, source_image=str(image_path))
+    cgb.save(doc, out_path)
+    summary = {
+        "out_path": str(out_path), "n_objects": len(objects),
+        "n_primitives": len(fits), "voxels": int(occ.sum()),
+        "objects": obj_summ,
+        "primitives": [{"type": f.prim_type} for f in fits],
+    }
+
+    if voxel_out_path is not None:
+        vdoc = _voxel_doc(occ, objid, colmap, centroid, scale, res, ground=ground, fits=fits)
+        cgb.save(vdoc, voxel_out_path)
+        summary["voxel_out_path"] = str(voxel_out_path)
+        summary["voxel_cubes"] = len(vdoc["primitives"])
+    return summary
+
+
+def _place_objects(img, objects, dn, *, res, depth_frac, depth_span):
+    """Rasterise every object's domed silhouette into one shared world grid."""
+    import cv2  # type: ignore
+
+    H, W = img.shape[:2]
+    maxwh = max(H, W)
+    sc = res / maxwh                              # pixels → grid cells
+    gw, gh = int(round(W * sc)), int(round(H * sc))
+    gx0, gy0 = (res - gw) // 2, (res - gh) // 2
+
+    occ = np.zeros((res, res, res), dtype=bool)
+    objid = -np.ones((res, res, res), dtype=np.int32)
+    colmap: dict = {}
+
+    img_g = cv2.resize(img, (gw, gh), interpolation=cv2.INTER_AREA)
+    dn_g = cv2.resize(dn.astype(np.float32), (gw, gh), interpolation=cv2.INTER_AREA)
+
+    for oid, sel in objects:
+        mg = cv2.resize(sel.astype(np.uint8), (gw, gh), interpolation=cv2.INTER_NEAREST).astype(bool)
+        if not mg.any():
+            continue
+        # Per-object thickness ∝ the object's own in-plane size, so a round shield
+        # gets a round depth and a thin sword a thin depth (a global thickness
+        # made everything a uniform flat slab).
+        ys2, xs2 = np.nonzero(mg)
+        obj_size = max(int(xs2.max() - xs2.min()) + 1, int(ys2.max() - ys2.min()) + 1)
+        th = depth_frac * 0.5 * obj_size
+        zc = res / 2.0 + (float(dn_g[mg].mean()) - 0.5) * depth_span * res
+        dt = cv2.distanceTransform(mg.astype(np.uint8), cv2.DIST_L2, 3)
+        dt = dt / (dt.max() or 1.0)
+        rows, cols = np.nonzero(mg)
+        for r, c in zip(rows, cols):
+            ix = gx0 + c
+            iy = res - 1 - (gy0 + r)
+            if not (0 <= ix < res and 0 <= iy < res):
+                continue
+            hz = th * np.sqrt(max(1e-3, dt[r, c]))
+            z0 = max(0, int(round(zc - hz)))
+            z1 = min(res - 1, int(round(zc + hz)))
+            occ[ix, iy, z0:z1 + 1] = True
+            objid[ix, iy, z0:z1 + 1] = oid
+            col = tuple(float(v) for v in img_g[r, c].astype(float) / 255.0)
+            for iz in range(z0, z1 + 1):
+                colmap[(ix, iy, iz)] = col
+    return occ, objid, colmap
+
+
+def _mean_obj_color(colmap, objid, oid):
+    cols = [colmap[k] for k in colmap if objid[k] == oid]
+    if not cols:
+        return (0.6, 0.55, 0.5)
+    a = np.mean(cols, axis=0)
+    return (float(a[0]), float(a[1]), float(a[2]))
+
+
+def _voxel_doc(occ, objid, colmap, centroid, scale, res, *, ground, fits):
+    """Coloured voxel debug doc, grounded to match the fitted primitives."""
+    import cgb
+
+    doc = cgb.new_document()
+    doc["metadata"]["generator"] = "CubeGB object voxels"
+    size = float(scale / res) * 1.03
+    pts = np.argwhere(occ)
+    # Ground by the grid's own lowest world-y (≈ the fits' lowest point).
+    ys = (((pts[:, 1] + 0.5) / res - 0.5) - centroid[1]) * scale
+    yshift = float(ys.min()) if ground else 0.0
+    for k, (ix, iy, iz) in enumerate(pts):
+        cn = (np.array([ix, iy, iz]) + 0.5) / res - 0.5
+        p = (cn - centroid) * scale
+        col = list(colmap.get((int(ix), int(iy), int(iz)), (0.6, 0.55, 0.5)))
+        cgb.add_primitive(doc, cgb.cube(
+            f"v{k}", [size, size, size], material_name=f"obj{int(objid[ix, iy, iz])}",
+            transform=cgb.make_transform(position=[float(p[0]), float(p[1] - yshift), float(p[2])]),
+            color=col))
+    return doc
+
+
 def object_to_documents(
     occ: np.ndarray,
     colmap: Optional[dict] = None,
