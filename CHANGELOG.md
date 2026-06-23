@@ -7,6 +7,11 @@ All notable changes to CubeGB are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Oriented (OBB) primitive fitting** (`recognition/oriented_fit.py`):
+  PCA-align an object to its principal axes, fit/decompose primitives there
+  (free to combine several), then inverse-transform each primitive back — so a
+  cube/cylinder returns *rotated* to hug a tilted part instead of being
+  approximated by an upright box.
 - **Per-object reconstruction** (`recognition/object_recon.py`): reconstruct a
   single object from one clean silhouette by extruding it along depth (with a
   distance-transform *dome* for a convex solid) into a voxel + fitted primitives.
