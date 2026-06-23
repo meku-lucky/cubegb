@@ -6,6 +6,14 @@ All notable changes to CubeGB are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Per-object reconstruction** (`recognition/object_recon.py`): reconstruct a
+  single object from one clean silhouette by extruding it along depth (with a
+  distance-transform *dome* for a convex solid) into a voxel + fitted primitives.
+  Cleanly isolates one part (e.g. a shield prompted out of a cat-knight concept)
+  instead of letting the whole-scene carve fuse it into the body — the building
+  block for an object-by-object scene pipeline.
+
 ### Fixed
 - **Side view depth was mirrored** in multi-view carving (the face/front ended up
   on the back). The 2×2 side profile faces image-left = world +Z, so the side
