@@ -85,13 +85,22 @@ def render_cgb(
     light = np.array([0.3, 0.5, 0.8]); light /= np.linalg.norm(light)
     shade = 0.30 + 0.70 * np.clip(nrm @ light, 0.0, 1.0)
 
+    # Per-face base colour from the baked materials (falls back to grey clay).
+    grey = np.array([170, 178, 190], dtype=np.float64)
+    try:
+        fcol = np.asarray(mesh.visual.face_colors)[:, :3].astype(np.float64)
+        if fcol.shape[0] != len(tris):
+            fcol = None
+    except Exception:
+        fcol = None
+
     img = Image.new("RGB", (size, size), tuple(bg))
     drw = ImageDraw.Draw(img)
-    base = np.array([170, 178, 190], dtype=np.float64)  # cool grey clay
     order = np.argsort(depth)                            # far -> near (painter's)
     for f in order:
         if nrm[f, 2] <= 0:                              # back-face cull
             continue
+        base = fcol[f] if fcol is not None else grey
         col = tuple(int(c) for c in np.clip(base * shade[f], 0, 255))
         pts = [(float(proj[f, k, 0]), float(proj[f, k, 1])) for k in range(3)]
         drw.polygon(pts, fill=col, outline=(90, 96, 108))

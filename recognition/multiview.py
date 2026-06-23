@@ -389,7 +389,7 @@ def _surface_voxels(occ: np.ndarray) -> np.ndarray:
 def occupancy_to_voxel_doc(
     occ: np.ndarray, centroid, scale, y_min: float = 0.0, *,
     view_res: int = 44, max_cubes: int = 4000, source_image=None,
-    color=(0.45, 0.55, 0.7),
+    color=(0.45, 0.55, 0.7), color_fn=None,
 ) -> dict:
     """Build a ``.cgb`` of cubes visualising the carved voxel solid (debug view).
 
@@ -397,6 +397,10 @@ def occupancy_to_voxel_doc(
     the cube count stays viewer-friendly, then renders each as a cube in the SAME
     world frame as the fitted primitives (shared ``centroid`` / ``scale`` /
     ``y_min``) so the two line up when shown side by side.
+
+    ``color_fn(cx, cy) -> (r, g, b)`` colours each voxel by sampling a view (e.g.
+    the front cell) at the voxel's normalised world ``(x, y)``; if ``None`` a flat
+    ``color`` is used.
     """
     import cgb
 
@@ -413,10 +417,11 @@ def occupancy_to_voxel_doc(
     doc = cgb.new_document(source_image=str(source_image) if source_image else None)
     doc["metadata"]["generator"] = "CubeGB voxel debug"
     size = float(scale / vr) * 1.03               # slight overlap hides seams
-    col = [float(c) for c in color]
+    flat = [float(c) for c in color]
     for k, (ix, iy, iz) in enumerate(idx):
         cn = (np.array([ix, iy, iz]) + 0.5) / vr - 0.5
         p = (cn - centroid) * scale
+        col = [float(c) for c in color_fn(float(cn[0]), float(cn[1]))] if color_fn else flat
         cgb.add_primitive(doc, cgb.cube(
             f"v{k}", [size, size, size],
             transform=cgb.make_transform(position=[float(p[0]), float(p[1] - y_min), float(p[2])]),
@@ -553,7 +558,8 @@ def image_to_cgb_multiview(
 
     # Optional: also emit the carved voxel solid as a viewable .cgb (debug view).
     if voxel_out_path is not None:
-        vdoc = occupancy_to_voxel_doc(occ, centroid, scale, y_min, source_image=sheet_path)
+        vdoc = occupancy_to_voxel_doc(occ, centroid, scale, y_min,
+                                      source_image=sheet_path, color_fn=front_color)
         cgb.save(vdoc, voxel_out_path)
         summary["voxel_out_path"] = str(voxel_out_path)
         summary["voxel_cubes"] = len(vdoc["primitives"])
