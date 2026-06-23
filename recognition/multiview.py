@@ -229,10 +229,10 @@ def _project(name: str, x: np.ndarray, y: np.ndarray, z: np.ndarray):
         return x, 1.0 - y
     if name == "back":
         return 1.0 - x, 1.0 - y
-    if name == "side":            # side profile faces image-left = world +Z (front)
-        return 1.0 - z, 1.0 - y
-    if name == "top":             # looking down: image-down = world +Z (front)
-        return x, z
+    if name == "side":            # side profile faces image-right = world +Z (front)
+        return z, 1.0 - y
+    if name == "top":             # looking down: image-up (v=0) = world +Z (front)
+        return x, 1.0 - z
     raise ValueError(f"unknown view {name!r}")
 
 
