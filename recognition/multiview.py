@@ -580,7 +580,29 @@ def image_to_cgb_multiview(
             object_fn = None  # segmentation is best-effort; never block generation
 
     fits: list = []
-    if method == "primitives":
+    if method == "objects":
+        # EXPERIMENTAL — real carving depth + per-object split + oriented (OBB)
+        # fitting. Segment the front into objects, assign each carved voxel to the
+        # object it projects onto, and oriented-fit each group. In practice the
+        # front-projection assignment smears in depth and produces more, messier
+        # primitives than the default whole-solid "primitives" decompose; kept as
+        # a research entry point, not the default.
+        from .object_recon import partition_objects
+        from .oriented_fit import fit_oriented_primitives
+        seg = Segmenter(sam_checkpoint, model_type=sam_model_type, device=device)
+        objects = partition_objects(seg.segment(front.rgb, max_masks=max_segments), H, W)
+        idx = np.argwhere(occ)
+        ui = np.clip(((idx[:, 0] + 0.5) / res) * W, 0, W - 1).astype(int)
+        vi = np.clip((1.0 - (idx[:, 1] + 0.5) / res) * H, 0, H - 1).astype(int)
+        world_s = (world - centroid) * scale
+        for oid, sel in objects:
+            pick = sel[vi, ui]
+            if int(pick.sum()) < 24:
+                continue
+            fits.extend(fit_oriented_primitives(
+                world_s[pick], max_prims=max_boxes // 3 or 4,
+                color=_mean_color(front.rgb, sel)))
+    elif method == "primitives":
         # Recursive shape abstraction: explain the carved solid with VARIED
         # volumetric primitives (cube/cylinder/cone/sphere), choosing each part's
         # type by IoU and partitioning the voxels (little overlap). See

@@ -156,9 +156,7 @@ def image_to_cgb_objects(
 
     from .segment import Segmenter, load_image_rgb
     from .depth import DepthEstimator
-    from .primfit import decompose_occupancy
     from .fit import build_document, FitResult, _lowest_y
-    from .multiview import _voxprim_to_fit
 
     img = load_image_rgb(image_path)
     H, W = img.shape[:2]
@@ -185,7 +183,8 @@ def image_to_cgb_objects(
     def color_at(ix, iy, iz):
         return colmap.get((ix, iy, iz), (0.6, 0.55, 0.5))
 
-    # Fit primitives PER object so parts don't merge.
+    # Fit primitives PER object (oriented/OBB) so parts stay separate AND rotated.
+    from .oriented_fit import fit_oriented_primitives
     fits: list = []
     obj_summ = []
     for oid, _ in objects:
@@ -193,12 +192,11 @@ def image_to_cgb_objects(
         n = int(sub.sum())
         if n < 8:
             continue
-        # colour a primitive by the mean colour of its object's voxels
         ocol = _mean_obj_color(colmap, objid, oid)
-        k0 = len(fits)
-        for vp in decompose_occupancy(sub, max_prims=per_object_prims):
-            fits.append(_voxprim_to_fit(vp, centroid, scale, lambda cx, cy, _c=ocol: _c))
-        obj_summ.append({"object": int(oid), "voxels": n, "primitives": len(fits) - k0})
+        pts_o = ((np.argwhere(sub) + 0.5) / res - 0.5 - centroid) * scale
+        new = fit_oriented_primitives(pts_o, max_prims=per_object_prims, color=ocol)
+        fits.extend(new)
+        obj_summ.append({"object": int(oid), "voxels": n, "primitives": len(new)})
 
     if not fits:
         raise RuntimeError("No primitives could be fit.")
@@ -311,16 +309,16 @@ def object_to_documents(
     max_prims: int = 6,
     target_size: float = 1.0,
     ground: bool = False,
+    oriented: bool = True,
 ):
     """Fit primitives to a reconstructed object and build ``.cgb`` documents.
 
-    Returns ``(prim_doc, voxel_doc)`` — the fitted primitives and a coloured
-    voxel debug doc — both in a shared, centred world frame.
+    With ``oriented`` (default), primitives are PCA-aligned and inverse-
+    transformed so they rotate to hug the part; otherwise they are axis-aligned.
+    Returns ``(prim_doc, voxel_doc)`` in a shared, centred world frame.
     """
     import cgb
 
-    from .primfit import decompose_occupancy
-    from .multiview import _voxprim_to_fit
     from .fit import build_document, FitResult, _lowest_y
 
     pts = np.argwhere(occ).astype(float)
@@ -332,10 +330,16 @@ def object_to_documents(
     ext = world.max(0) - world.min(0)
     scale = target_size / max(float(ext.max()), 1e-9)
 
-    fits = [
-        _voxprim_to_fit(vp, centroid, scale, lambda cx, cy: (0.72, 0.6, 0.42))
-        for vp in decompose_occupancy(occ, max_prims=max_prims)
-    ]
+    color = (0.72, 0.6, 0.42)
+    if oriented:
+        from .oriented_fit import fit_oriented_primitives
+        fits = fit_oriented_primitives((world - centroid) * scale,
+                                       max_prims=max_prims, color=color)
+    else:
+        from .primfit import decompose_occupancy
+        from .multiview import _voxprim_to_fit
+        fits = [_voxprim_to_fit(vp, centroid, scale, lambda cx, cy: color)
+                for vp in decompose_occupancy(occ, max_prims=max_prims)]
     if ground and fits:
         y_min = min(_lowest_y(f) for f in fits)
         if np.isfinite(y_min):
