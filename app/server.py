@@ -176,9 +176,11 @@ async def generate(
             )
 
         dev = None if device in ("", "auto") else device
+        voxel_out = Path(tmp) / "voxel.cgb"
         try:
             if sheet_path is not None:
-                # Precision mode: multi-view 2x2 sheet -> space carving.
+                # Precision mode: multi-view 2x2 sheet -> space carving. Also emit
+                # the carved voxel solid as a debug .cgb for the side-by-side view.
                 summary = image_to_cgb_multiview(
                     str(sheet_path), str(out_path),
                     sam_checkpoint=sam_ckpt, device=dev,
@@ -186,6 +188,7 @@ async def generate(
                     max_segments=int(max_segments),
                     prior_weight=float(prior_weight),
                     ground=bool(ground),
+                    voxel_out_path=str(voxel_out),
                 )
             else:
                 # Draft mode: single image (returns a summary, writes the .cgb).
@@ -206,8 +209,9 @@ async def generate(
             raise HTTPException(status_code=400, detail=f"Generation failed: {exc}")
 
         doc = cgb.load(str(out_path))  # the full, schema-valid .cgb document
+        voxel_doc = cgb.load(str(voxel_out)) if voxel_out.exists() else None
 
-    return JSONResponse({"cgb": doc, "summary": summary})
+    return JSONResponse({"cgb": doc, "voxel_cgb": voxel_doc, "summary": summary})
 
 
 # --------------------------------------------------------------------------- #

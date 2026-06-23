@@ -86,15 +86,24 @@
   #primList .type { font-size: 10.5px; color: var(--text-dim); }
   .empty { font-size: 12px; color: var(--text-dim); font-style: italic; padding: 4px 2px; }
 
-  /* ---- viewport ---- */
+  /* ---- viewport: 2x2 quad of debug panels ---- */
   #viewport { position: relative; flex: 1; height: 100%; }
-  #vp3d { position: absolute; inset: 0; }
-  #vpHint { position: absolute; bottom: 12px; right: 14px; font-size: 11px;
+  #quad { position: absolute; inset: 0; display: grid;
+    grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 1px;
+    background: var(--border); }
+  .panel { position: relative; background: var(--bg); overflow: hidden; }
+  .panel .plabel { position: absolute; top: 8px; left: 10px; z-index: 5;
+    font-size: 11px; font-weight: 600; color: var(--text-dim);
+    background: rgba(21,23,28,.7); padding: 2px 8px; border-radius: 6px;
+    pointer-events: none; }
+  .panel .pview { position: absolute; inset: 0; }
+  .panel .pempty { position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; padding: 0 16px; text-align: center; font-size: 12px;
     color: var(--text-dim); pointer-events: none; }
-  #vpEmpty { position: absolute; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 8px; color: var(--text-dim);
-    text-align: center; pointer-events: none; }
-  #vpEmpty .big { font-size: 17px; color: var(--text); }
+  .panel.aux { background: #131519; }
+  .panel.aux .plabel { color: #5a6473; }
+  #vpHint { position: absolute; bottom: 10px; right: 12px; font-size: 10px;
+    color: var(--text-dim); pointer-events: none; z-index: 6; }
 
   /* ---- toast ---- */
   #toast { position: absolute; bottom: 16px; left: 16px; max-width: 420px; display: none;
@@ -203,10 +212,25 @@
   </aside>
 
   <main id="viewport">
-    <div id="vp3d"></div>
-    <div id="vpEmpty">
-      <div class="big">3D 뷰</div>
-      <div>이미지로 생성하거나 .cgb를 불러오면 여기에 표시됩니다.</div>
+    <div id="quad">
+      <div class="panel">
+        <div class="plabel">① 복셀 (카빙 결과)</div>
+        <div class="pview" id="vpVoxel"></div>
+        <div class="pempty" id="emptyVoxel">멀티뷰 2×2 시트로 생성하면<br>카빙된 복셀이 여기에 표시됩니다.</div>
+      </div>
+      <div class="panel">
+        <div class="plabel">② 최종 프리미티브</div>
+        <div class="pview" id="vpPrims"></div>
+        <div class="pempty" id="emptyPrims">이미지로 생성하거나<br>.cgb를 불러오면 표시됩니다.</div>
+      </div>
+      <div class="panel aux">
+        <div class="plabel">③ 디버그 (예정)</div>
+        <div class="pempty">중간 과정 뷰 (추후)<br><span style="font-size:10px">예: 실루엣 · 깊이 · 점군</span></div>
+      </div>
+      <div class="panel aux">
+        <div class="plabel">④ 디버그 (예정)</div>
+        <div class="pempty">중간 과정 뷰 (추후)</div>
+      </div>
     </div>
     <div id="vpHint">좌-드래그 회전 · 우-드래그 이동 · 휠 줌</div>
     <div id="toast"><span class="close" id="toastClose">&times;</span>

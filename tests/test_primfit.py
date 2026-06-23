@@ -91,6 +91,20 @@ def _rasterize(vp: VoxPrim) -> np.ndarray:
     return _raster_cone((R, R, R), c, vp.radius * R, a, lo, hi, vp.apex_high)
 
 
+def test_voxel_debug_doc_is_valid_and_capped():
+    """occupancy_to_voxel_doc → a schema-valid .cgb of cubes, count under the cap."""
+    import cgb
+    from recognition.multiview import occupancy_to_voxel_doc
+
+    X, Y, Z = _coords()
+    occ = ((X - R / 2) ** 2 + (Y - R / 2) ** 2 + (Z - R / 2) ** 2) <= 18 ** 2
+    doc = occupancy_to_voxel_doc(occ, centroid=np.zeros(3), scale=1.0, y_min=0.0,
+                                 view_res=32, max_cubes=2000)
+    cgb.validate(doc)
+    assert 0 < len(doc["primitives"]) <= 2000
+    assert all(p["type"] == "cube" for p in doc["primitives"])
+
+
 def test_partition_has_negligible_overlap():
     """Decomposition partitions voxels: total volume ≈ union (little redundancy)."""
     X, Y, Z = _coords()

@@ -168,6 +168,48 @@ def split_sheet(
     return cells
 
 
+def align_views(cells: list["ViewCell"], *, target_fill: float = 0.9) -> None:
+    """Centre and commonly-scale each view's silhouette in place.
+
+    The 2x2 views of a sheet are often drawn off-centre or at slightly different
+    scales, so their projection cones miss each other and space carving collapses
+    to almost nothing. This re-centres each silhouette in its cell and applies a
+    **single shared scale** (so the largest view fills ``target_fill`` of the
+    cell) — fixing position/scale mismatch while preserving relative proportions.
+    Blank cells are left untouched. No-op without OpenCV.
+    """
+    try:
+        import cv2  # type: ignore
+    except ImportError:  # pragma: no cover
+        return
+
+    boxes = []
+    for c in cells:
+        if c.blank or not c.silhouette.any():
+            boxes.append(None)
+            continue
+        ys, xs = np.nonzero(c.silhouette)
+        boxes.append((int(ys.min()), int(ys.max()), int(xs.min()), int(xs.max())))
+
+    exts = [max(b[1] - b[0] + 1, b[3] - b[2] + 1) for b in boxes if b]
+    if not exts:
+        return
+    H, W = cells[0].silhouette.shape
+    scale = (target_fill * min(H, W)) / max(exts)
+
+    for c, b in zip(cells, boxes):
+        if b is None:
+            continue
+        crop = c.silhouette[b[0]:b[1] + 1, b[2]:b[3] + 1].astype(np.uint8)
+        nh = max(1, min(H, int(round(crop.shape[0] * scale))))
+        nw = max(1, min(W, int(round(crop.shape[1] * scale))))
+        r = cv2.resize(crop, (nw, nh), interpolation=cv2.INTER_NEAREST).astype(bool)
+        out = np.zeros((H, W), dtype=bool)
+        oy, ox = (H - nh) // 2, (W - nw) // 2
+        out[oy:oy + nh, ox:ox + nw] = r
+        c.silhouette = out
+
+
 # --------------------------------------------------------------------------- #
 # Space carving — silhouettes -> voxel occupancy
 # --------------------------------------------------------------------------- #
@@ -319,6 +361,69 @@ def occupancy_to_boxes(
     return boxes
 
 
+def _downsample_max(occ: np.ndarray, factor: int) -> np.ndarray:
+    """Block max-pool an occupancy grid by an integer ``factor`` (occupied if any)."""
+    if factor <= 1:
+        return occ
+    R = occ.shape[0]
+    pad = (-R) % factor
+    if pad:
+        occ = np.pad(occ, ((0, pad), (0, pad), (0, pad)))
+    n = occ.shape[0] // factor
+    return occ.reshape(n, factor, n, factor, n, factor).any(axis=(1, 3, 5))
+
+
+def _surface_voxels(occ: np.ndarray) -> np.ndarray:
+    """Occupied voxels with at least one empty 6-neighbour (a hollow shell)."""
+    nbr_all = np.ones_like(occ)
+    for axis in range(3):
+        for shift in (1, -1):
+            nbr_all &= np.roll(occ, shift, axis=axis)
+            # voxels rolled across the border are not real neighbours → empty
+            sl = [slice(None)] * 3
+            sl[axis] = (0 if shift == 1 else -1)
+            nbr_all[tuple(sl)] = False
+    return occ & ~nbr_all
+
+
+def occupancy_to_voxel_doc(
+    occ: np.ndarray, centroid, scale, y_min: float = 0.0, *,
+    view_res: int = 44, max_cubes: int = 4000, source_image=None,
+    color=(0.45, 0.55, 0.7),
+) -> dict:
+    """Build a ``.cgb`` of cubes visualising the carved voxel solid (debug view).
+
+    Downsamples to ``view_res`` and keeps only surface voxels (a hollow shell) so
+    the cube count stays viewer-friendly, then renders each as a cube in the SAME
+    world frame as the fitted primitives (shared ``centroid`` / ``scale`` /
+    ``y_min``) so the two line up when shown side by side.
+    """
+    import cgb
+
+    R = occ.shape[0]
+    factor = max(1, int(np.ceil(R / view_res)))
+    vox = _downsample_max(occ, factor)
+    vr = vox.shape[0]
+    surf = _surface_voxels(vox)
+    idx = np.argwhere(surf)
+    if len(idx) > max_cubes:                      # thin out evenly if still dense
+        keep = np.linspace(0, len(idx) - 1, max_cubes).astype(int)
+        idx = idx[keep]
+
+    doc = cgb.new_document(source_image=str(source_image) if source_image else None)
+    doc["metadata"]["generator"] = "CubeGB voxel debug"
+    size = float(scale / vr) * 1.03               # slight overlap hides seams
+    col = [float(c) for c in color]
+    for k, (ix, iy, iz) in enumerate(idx):
+        cn = (np.array([ix, iy, iz]) + 0.5) / vr - 0.5
+        p = (cn - centroid) * scale
+        cgb.add_primitive(doc, cgb.cube(
+            f"v{k}", [size, size, size],
+            transform=cgb.make_transform(position=[float(p[0]), float(p[1] - y_min), float(p[2])]),
+            color=col, material_name="voxel"))
+    return doc
+
+
 # --------------------------------------------------------------------------- #
 # Orchestration: 2x2 sheet -> .cgb (precision mode)
 # --------------------------------------------------------------------------- #
@@ -329,13 +434,15 @@ def image_to_cgb_multiview(
     sam_checkpoint: str,
     device: Optional[str] = None,
     sam_model_type: str = "vit_h",
-    res: int = 64,
+    res: int = 96,
     max_segments: int = 12,
     prior_weight: float = 0.6,
     target_size: float = 1.5,
     ground: bool = True,
+    align: bool = True,
     method: str = "primitives",
     max_boxes: int = 24,
+    voxel_out_path: Optional[str] = None,
 ) -> dict:
     """Reconstruct a ``.cgb`` from a 2x2 multi-view sheet via space carving.
 
@@ -356,6 +463,8 @@ def image_to_cgb_multiview(
 
     sheet = load_image_rgb(sheet_path)
     cells = split_sheet(sheet)               # bg-subtraction silhouettes
+    if align:
+        align_views(cells)                   # fix off-centre / mismatched-scale views
     front = next(c for c in cells if c.name == "front")
     used = [c.name for c in cells if not c.blank]
 
@@ -423,21 +532,32 @@ def image_to_cgb_multiview(
     if not fits:
         raise RuntimeError("No primitives could be fit from the carved volume.")
 
+    y_min = 0.0
     if ground:
         y_min = min(_lowest_y(f) for f in fits)
-        if np.isfinite(y_min):
-            fits = [FitResult(f.prim_type,
-                              (f.position[0], f.position[1] - y_min, f.position[2]),
-                              f.rotation_euler, f.params, f.residual, f.color)
-                    for f in fits]
+        if not np.isfinite(y_min):
+            y_min = 0.0
+        fits = [FitResult(f.prim_type,
+                          (f.position[0], f.position[1] - y_min, f.position[2]),
+                          f.rotation_euler, f.params, f.residual, f.color)
+                for f in fits]
 
     doc = build_document(fits, source_image=str(sheet_path))
     cgb.save(doc, out_path)
-    return {
-        "out_path": str(out_path), "views_used": used,
+
+    summary = {
+        "out_path": str(out_path), "views_used": used, "res": int(res),
         "voxels": int(occ.sum()), "n_primitives": len(fits),
         "primitives": [{"type": f.prim_type} for f in fits],
     }
+
+    # Optional: also emit the carved voxel solid as a viewable .cgb (debug view).
+    if voxel_out_path is not None:
+        vdoc = occupancy_to_voxel_doc(occ, centroid, scale, y_min, source_image=sheet_path)
+        cgb.save(vdoc, voxel_out_path)
+        summary["voxel_out_path"] = str(voxel_out_path)
+        summary["voxel_cubes"] = len(vdoc["primitives"])
+    return summary
 
 
 import math

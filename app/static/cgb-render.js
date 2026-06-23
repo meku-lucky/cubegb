@@ -59,6 +59,7 @@ export class CGBViewer {
   constructor(container, opts = {}) {
     this.container = container;
     this.onSelect = opts.onSelect || (() => {});
+    this.edges = opts.edges !== false;   // per-primitive edge overlay (off for dense voxels)
     this.primEntries = [];
     this.activeId = null;
 
@@ -144,9 +145,11 @@ export class CGBViewer {
       mesh.rotation.set(rot[0], rot[1], rot[2]);
       mesh.position.set(pos[0], pos[1], pos[2]);
 
-      const edges = new THREE.EdgesGeometry(geom, 25);
-      mesh.add(new THREE.LineSegments(edges,
-        new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22 })));
+      if (this.edges) {
+        const edges = new THREE.EdgesGeometry(geom, 25);
+        mesh.add(new THREE.LineSegments(edges,
+          new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22 })));
+      }
 
       group.add(mesh);
       entries.push({

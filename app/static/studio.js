@@ -2,24 +2,27 @@
 // CubeGB Studio — frontend orchestration.
 // Wires the image → generate → 3D view → export flow to the FastAPI backend.
 //
-// Resilience: the 3D viewer (CGBViewer, which pulls in three.js) is loaded
-// *dynamically* and lazily. If that import fails — e.g. the vendored three.js is
-// missing or a CDN is blocked — the rest of the app (health check, .cgb loading,
-// primitive list, export) still works; only the 3D preview degrades to a message.
+// The viewport is a 2x2 debug quad: ① the carved voxel solid, ② the final
+// primitives, ③④ reserved for future intermediate-stage views. The 3D viewer
+// (CGBViewer, which pulls in three.js) is loaded *dynamically* — if it fails,
+// the rest of the app (health, .cgb loading, primitive list, export) still works.
 // ===========================================================================
 
 const $ = (id) => document.getElementById(id);
 
 // --- state ---
-let viewer = null;          // CGBViewer instance, or null if 3D unavailable
+let primViewer = null;       // CGBViewer for the final primitives (panel ②)
+let voxelViewer = null;      // CGBViewer for the carved voxels (panel ①)
 let viewerStatus = 'loading'; // 'loading' | 'ready' | 'failed'
-let currentDoc = null;      // the .cgb document currently shown
-let imageFile = null;       // selected single input image File
-let sheetFile = null;       // selected 2x2 multi-view sheet File (optional)
-let entries = [];           // [{id, name, type, colorHex, mesh?}]
+let currentDoc = null;       // the .cgb document currently shown
+let currentVoxelDoc = null;
+let imageFile = null;        // selected input image File
+let sheetFile = null;        // selected 2x2 multi-view sheet File
+let entries = [];            // primitive entries for the sidebar list
 
 // --- elements ---
-const vp3d = $('vp3d'), vpEmpty = $('vpEmpty');
+const vpPrims = $('vpPrims'), vpVoxel = $('vpVoxel');
+const emptyPrims = $('emptyPrims'), emptyVoxel = $('emptyVoxel');
 const imgDrop = $('imgDrop'), imgInput = $('imgInput'), imgPreview = $('imgPreview');
 const sheetDrop = $('sheetDrop'), sheetInput = $('sheetInput'), sheetPreview = $('sheetPreview');
 const genBtn = $('genBtn'), genStatus = $('genStatus');
@@ -30,8 +33,7 @@ const capNote = $('capNote');
 const toast = $('toast'), toastMsg = $('toastMsg');
 
 // ---------------------------------------------------------------------------
-// Small helpers that DO NOT depend on three.js (so they work even if the 3D
-// viewer fails to load).
+// three-free helpers (work even if the 3D viewer fails to load)
 // ---------------------------------------------------------------------------
 function colorToHex(arr) {
   const c = Array.isArray(arr) ? arr : [0.7, 0.7, 0.72];
@@ -39,7 +41,6 @@ function colorToHex(arr) {
     .toString(16).padStart(2, '0');
   return '#' + h(c[0]) + h(c[1]) + h(c[2]);
 }
-
 function validateDocLocal(doc) {
   if (doc == null || typeof doc !== 'object') throw new Error('JSON 객체가 아닙니다.');
   if (doc.format !== 'cgb') {
@@ -48,20 +49,12 @@ function validateDocLocal(doc) {
   }
   if (!Array.isArray(doc.primitives)) throw new Error('잘못된 .cgb: "primitives"는 배열이어야 합니다.');
 }
-
 function entriesFromDoc(doc) {
   return doc.primitives.map((p, i) => ({
     id: p.id != null ? p.id : ('idx_' + i),
     name: p.name || p.id || ('primitive_' + i),
-    type: p.type,
-    colorHex: colorToHex(p.material && p.material.color),
-    mesh: null,
+    type: p.type, colorHex: colorToHex(p.material && p.material.color), mesh: null,
   }));
-}
-
-function setViewportMessage(big, small) {
-  vpEmpty.innerHTML = '<div class="big">' + big + '</div><div>' + small + '</div>';
-  vpEmpty.style.display = 'flex';
 }
 
 // ---------------------------------------------------------------------------
@@ -72,30 +65,23 @@ $('toastClose').addEventListener('click', () => toast.classList.remove('show'));
 function setStatus(html) { genStatus.innerHTML = html; }
 
 // ---------------------------------------------------------------------------
-// Lazy 3D viewer init — dynamic import so a failure never breaks the app.
+// Lazy 3D viewers — dynamic import so a failure never breaks the app.
 // ---------------------------------------------------------------------------
-async function initViewer() {
+async function initViewers() {
   try {
     const mod = await import('/static/cgb-render.js'); // pulls in three.js
-    viewer = new mod.CGBViewer(vp3d, {
+    primViewer = new mod.CGBViewer(vpPrims, {
       onSelect: (id) => {
         [...primList.children].forEach((li) => li.classList.toggle('active', li.dataset.id === id));
       },
     });
+    voxelViewer = new mod.CGBViewer(vpVoxel, { background: 0x121519, edges: false });
     viewerStatus = 'ready';
-    // If a document was already loaded before the viewer finished importing,
-    // render it now.
-    if (currentDoc) {
-      try { entries = viewer.loadDoc(currentDoc); rebuildList(); vpEmpty.style.display = 'none'; }
-      catch (e) { /* keep the fallback list already shown */ }
-    }
+    if (currentDoc) renderDocs();  // a doc arrived before the viewers were ready
   } catch (e) {
     viewerStatus = 'failed';
-    setViewportMessage(
-      '3D 미리보기를 사용할 수 없습니다',
-      '3D 라이브러리를 불러오지 못했습니다(오프라인이거나 차단됨). ' +
-      '프리미티브 목록과 내보내기는 정상 사용할 수 있습니다.'
-    );
+    emptyPrims.innerHTML = '3D 미리보기를 불러오지 못했습니다(오프라인/차단).<br>목록과 내보내기는 정상 사용 가능합니다.';
+    emptyPrims.style.display = 'flex';
     console.error('CGBViewer load failed:', e);
   }
 }
@@ -122,29 +108,15 @@ async function checkHealth() {
   }
 }
 
-// Kick off health + viewer independently; neither blocks the other.
 checkHealth();
-initViewer();
+initViewers();
 
 // ---------------------------------------------------------------------------
-// Steps 1 & 2 — single image + (optional) multi-view sheet selection
+// Step 1/2 — image & multi-view sheet selection
 // ---------------------------------------------------------------------------
-// Generation needs EITHER a single image OR a 2x2 sheet (or both).
-function updateGenEnabled() {
-  genBtn.disabled = !(imageFile || sheetFile);
-}
-
-// Wire a drop zone (click / file input / drag-drop) to a setter.
-function wireDrop(drop, input, preview, setFile) {
-  function pick(file) {
-    if (!file) return;
-    setFile(file);
-    preview.src = URL.createObjectURL(file);
-    preview.style.display = 'block';
-    updateGenEnabled();
-  }
+function wireDrop(drop, input, preview, onPick) {
   drop.addEventListener('click', () => input.click());
-  input.addEventListener('change', (e) => { pick(e.target.files[0]); input.value = ''; });
+  input.addEventListener('change', (e) => { if (e.target.files[0]) onPick(e.target.files[0]); input.value = ''; });
   ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => {
     e.preventDefault(); drop.classList.add('drag');
   }));
@@ -153,47 +125,46 @@ function wireDrop(drop, input, preview, setFile) {
   }));
   drop.addEventListener('drop', (e) => {
     const f = e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f && f.type.startsWith('image/')) pick(f);
+    if (f && f.type.startsWith('image/')) onPick(f);
   });
+  function onPickInternal(file) { preview.src = URL.createObjectURL(file); preview.style.display = 'block'; }
+  return onPickInternal;
 }
-wireDrop(imgDrop, imgInput, imgPreview, (f) => { imageFile = f; });
-wireDrop(sheetDrop, sheetInput, sheetPreview, (f) => { sheetFile = f; });
+const showImg = wireDrop(imgDrop, imgInput, imgPreview, (f) => { imageFile = f; showImg(f); genBtn.disabled = false; });
+const showSheet = wireDrop(sheetDrop, sheetInput, sheetPreview, (f) => { sheetFile = f; showSheet(f); genBtn.disabled = false; });
 
 // ---------------------------------------------------------------------------
-// Step 2 — generate (.cgb from image) OR load an existing .cgb
+// Step 3 — generate OR load an existing .cgb
 // ---------------------------------------------------------------------------
 genBtn.addEventListener('click', async () => {
-  if (!imageFile && !sheetFile) {
-    showError('단일 이미지 또는 멀티뷰 2×2 시트를 선택하세요.');
-    return;
-  }
+  if (!imageFile && !sheetFile) { showError('이미지 또는 멀티뷰 시트를 선택하세요.'); return; }
   toast.classList.remove('show');
   genBtn.disabled = true;
-  setStatus('<span class="spinner"></span><span class="muted">생성 중… (모델 추론은 수십 초 걸릴 수 있습니다)</span>');
+  const mode = sheetFile ? '멀티뷰(정밀)' : '단일 이미지';
+  setStatus(`<span class="spinner"></span><span class="muted">생성 중… (${mode}, 수십 초 소요 가능)</span>`);
 
   const fd = new FormData();
   if (imageFile) fd.append('image', imageFile);
-  if (sheetFile) fd.append('sheet', sheetFile);   // multi-view precision path
+  if (sheetFile) fd.append('sheet', sheetFile);
   fd.append('sam_checkpoint', $('samCkpt').value);
   fd.append('depth_checkpoint', $('depthCkpt').value);
   fd.append('device', $('device').value);
   fd.append('sam_model_type', $('samType').value);
   fd.append('max_segments', $('maxSeg').value);
-  fd.append('prior_weight', $('priorWeight').value);
-  fd.append('fg_depth_thresh', $('fgDepth').value);
-  fd.append('ground', $('ground').checked ? 'true' : 'false');
 
   try {
     const res = await fetch('/api/generate', { method: 'POST', body: fd });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
-    applyDoc(data.cgb);
-    setStatus('<span class="ok">완료</span> · 프리미티브 ' + data.cgb.primitives.length + '개');
+    applyDoc(data.cgb, data.voxel_cgb || null);
+    const vx = data.summary && data.summary.voxels;
+    setStatus('<span class="ok">완료</span> · 프리미티브 ' + data.cgb.primitives.length + '개'
+      + (vx ? ` · 복셀 ${vx.toLocaleString()}개` : ''));
   } catch (e) {
     setStatus('<span class="err">실패</span>');
     showError(e.message);
   } finally {
-    updateGenEnabled();
+    genBtn.disabled = false;
   }
 });
 
@@ -205,7 +176,7 @@ cgbInput.addEventListener('change', (e) => {
   reader.onload = (ev) => {
     try {
       const doc = JSON.parse(ev.target.result);
-      applyDoc(doc);
+      applyDoc(doc, null);
       const base = f.name.replace(/\.cgb$/i, '');
       if (base) exportName.value = base;
       setStatus('<span class="ok">불러옴</span> · ' + f.name);
@@ -215,32 +186,36 @@ cgbInput.addEventListener('change', (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// Apply a .cgb doc to the viewer + UI. Works with or without the 3D viewer.
+// Apply docs to the viewers + UI (works with or without the 3D viewers)
 // ---------------------------------------------------------------------------
-function applyDoc(doc) {
-  try {
-    validateDocLocal(doc);
-  } catch (e) { showError('표시할 수 없는 .cgb: ' + e.message); return; }
-
+function applyDoc(doc, voxelDoc) {
+  try { validateDocLocal(doc); }
+  catch (e) { showError('표시할 수 없는 .cgb: ' + e.message); return; }
   currentDoc = doc;
-
-  // 3D render if the viewer is available; otherwise keep a clear message.
-  if (viewer) {
-    try {
-      entries = viewer.loadDoc(doc);
-      vpEmpty.style.display = 'none';
-    } catch (e) {
-      entries = entriesFromDoc(doc);
-      showError('3D 렌더 실패(목록·내보내기는 사용 가능): ' + e.message);
-    }
-  } else {
-    entries = entriesFromDoc(doc);
-    if (viewerStatus === 'loading') setViewportMessage('3D 미리보기 준비 중…', '잠시만요.');
-    // if 'failed', the failure message is already shown.
-  }
-
+  currentVoxelDoc = voxelDoc || null;
+  entries = entriesFromDoc(doc);
+  renderDocs();
   rebuildList();
   dlCgb.disabled = dlGlb.disabled = dlObj.disabled = false;
+}
+
+function renderDocs() {
+  // Panel ② final primitives
+  if (primViewer && currentDoc) {
+    try { entries = primViewer.loadDoc(currentDoc); emptyPrims.style.display = 'none'; }
+    catch (e) { showError('3D 렌더 실패(목록·내보내기는 가능): ' + e.message); }
+  }
+  // Panel ① carved voxels
+  if (voxelViewer) {
+    if (currentVoxelDoc) {
+      try { voxelViewer.loadDoc(currentVoxelDoc); emptyVoxel.style.display = 'none'; }
+      catch (e) { /* ignore voxel render errors */ }
+    } else {
+      voxelViewer.clear();
+      emptyVoxel.innerHTML = '멀티뷰 2×2 시트로 생성하면<br>카빙된 복셀이 여기에 표시됩니다.';
+      emptyVoxel.style.display = 'flex';
+    }
+  }
 }
 
 function rebuildList() {
@@ -258,14 +233,13 @@ function rebuildList() {
     const tp = document.createElement('div'); tp.className = 'type'; tp.textContent = entry.type;
     meta.appendChild(nm); meta.appendChild(tp);
     li.appendChild(sw); li.appendChild(meta);
-    // Clicking focuses the primitive only when the 3D viewer is available.
-    if (viewer) li.addEventListener('click', () => viewer.select(entry.id));
+    if (primViewer) li.addEventListener('click', () => primViewer.select(entry.id));
     primList.appendChild(li);
   });
 }
 
 // ---------------------------------------------------------------------------
-// Step 3 — export
+// Step 4 — export
 // ---------------------------------------------------------------------------
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -277,8 +251,8 @@ function downloadBlob(blob, filename) {
 
 dlCgb.addEventListener('click', () => {
   if (!currentDoc) return;
-  const name = (exportName.value || 'cubegb') + '.cgb';
-  downloadBlob(new Blob([JSON.stringify(currentDoc, null, 2)], { type: 'application/json' }), name);
+  downloadBlob(new Blob([JSON.stringify(currentDoc, null, 2)], { type: 'application/json' }),
+    (exportName.value || 'cubegb') + '.cgb');
 });
 
 async function bake(fmt, btn) {

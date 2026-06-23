@@ -6,6 +6,20 @@ All notable changes to CubeGB are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Carved voxel debug view**: multi-view generation now also emits the carved
+  voxel solid as a viewable `.cgb` of cubes (`occupancy_to_voxel_doc`), in the
+  same world frame as the fitted primitives.
+- **Studio 2×2 debug quad**: the 3D viewport is split into four panels — ① carved
+  voxels, ② final primitives, ③④ reserved for future intermediate-stage views.
+
+### Changed
+- **Multi-view carving quality**: silhouettes are now re-centred and commonly
+  scaled across the four views (`align_views`) before space carving, fixing
+  off-centre / mismatched-scale sheets that previously collapsed to an almost
+  empty hull (e.g. one figure went from ~3.7k to ~17k+ voxels and became a
+  recognisable blockout). Default carving resolution raised 64 → 96.
+
 ## [0.0.1] - 2026-06-23
 
 First tagged pre-release. Image → editable parametric-primitive blockout, end to
