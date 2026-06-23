@@ -6,6 +6,11 @@ All notable changes to CubeGB are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Side view depth was mirrored** in multi-view carving (the face/front ended up
+  on the back). The 2×2 side profile faces image-left = world +Z, so the side
+  projection is flipped to match the front/back views.
+
 ### Added
 - **Carved voxel debug view**: multi-view generation now also emits the carved
   voxel solid as a viewable `.cgb` of cubes (`occupancy_to_voxel_doc`), in the

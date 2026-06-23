@@ -45,10 +45,23 @@ export CUBEGB_DEPTH_CHECKPOINT=/path/to/depth_anything_v2.pth   # optional
    pick a device, and click **생성 (Generate)**. The result loads into the 3D view.
    - No recognition stack installed? Skip generation and click **.cgb 불러오기**
      to view/export an existing `.cgb`.
-3. **3D 뷰** — orbit (left-drag), pan (right-drag), zoom (wheel). Click a
-   primitive in the list to focus it.
+3. **3D 뷰 (2×2 디버그 쿼드)** — the viewport shows four synced panels:
+   ① carved voxels (multi-view colour), ② final primitives, ③ front-only colour
+   (compare with ①), ④ voxels coloured by SAM object group. Orbit (left-drag),
+   pan (right-drag), zoom (wheel); click a primitive in the list to focus it.
 4. **내보내기** — download the `.cgb` source, or export **`.glb`** / **`.obj`**
    (baked server-side, low-poly, named parts).
+
+![Studio 4-panel debug view](../images/studio-quad.png)
+
+### Voxel resolution
+
+The *생성 옵션* panel exposes a **voxel resolution** (96–512, default 128) for the
+multi-view carving. Carving and primitive-fitting resolutions are **decoupled**,
+so a high resolution keeps the voxel panels crisp while primitive fitting stays
+fast (~15–20 s even at 256). The voxel `.cgb` carries each voxel's multi-view
+colour (`material.color`), front-only colour (cube `name`, hex), and object-group
+id (`material.name`, `obj{N}`) — structure kept for future per-object work.
 
 ## What needs what
 

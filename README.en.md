@@ -128,14 +128,21 @@ instead of guessed.
 1. **Per-view silhouettes** — extract the object silhouette in each cell (blank
    cells are skipped, so accuracy scales with *how many faces you provide*).
 2. **Space carving** — intersect the silhouettes at their known angles to carve a
-   **voxel solid (visual hull)**. Thickness and footprint are measured for real
-   (note the rounded lid surviving in the *side projection* above).
-3. **Fit primitives** — the carved solid is turned into primitives the same way
-   and saved as `.cgb`.
+   **voxel solid (visual hull)**. Each voxel is coloured from the **view facing it**
+   (front/side/back/top), so sides and the back keep their own colour (resolution
+   96–512, selectable).
+3. **Shape abstraction** — recursively decompose the carved solid and replace each
+   part with the **cube / cylinder / cone / sphere** of lowest residual (IoU), so
+   parts barely overlap and round parts become cylinders/cones.
 
 The blockout produced from the input above:
 
 <p align="center"><img src="images/hero-treasure-chest.png" alt="treasure-chest blockout" width="420"></p>
+
+**CubeGB Studio debug view** — carved voxels, final primitives, and object groups
+side by side:
+
+![Studio 4-panel debug view](images/studio-quad.png)
 
 > Thin objects that collapse into a single blob from one image (e.g. a blade)
 > keep their thickness with multi-view (blade thickness: single-view ≈ 0.69 →
