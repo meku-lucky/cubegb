@@ -229,8 +229,8 @@ def _project(name: str, x: np.ndarray, y: np.ndarray, z: np.ndarray):
         return x, 1.0 - y
     if name == "back":
         return 1.0 - x, 1.0 - y
-    if name == "side":            # right side: image-right = world +Z
-        return z, 1.0 - y
+    if name == "side":            # side profile faces image-left = world +Z (front)
+        return 1.0 - z, 1.0 - y
     if name == "top":             # looking down: image-down = world +Z (front)
         return x, z
     raise ValueError(f"unknown view {name!r}")
@@ -592,6 +592,7 @@ def image_to_cgb_multiview(
         occ_fit = occ
         if fit_res and res > fit_res:
             occ_fit = _downsample_max(occ, int(np.ceil(res / fit_res)))
+
         for vp in decompose_occupancy(occ_fit, max_prims=max_boxes):
             fits.append(_voxprim_to_fit(vp, centroid, scale, front_color))
     elif method == "boxes":
