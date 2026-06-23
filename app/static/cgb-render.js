@@ -16,7 +16,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 const DEFAULT_COLOR = [0.7, 0.7, 0.72];
 const VOXEL_CLAY = [0.66, 0.70, 0.76];
 
-// Per-voxel colour for the three voxel panels.
+// Per-voxel colour for the voxel panels.
+//   'multiview' → material.color (sampled from the view facing each voxel)
+//   'front'     → the front-only colour, stored as a hex in prim.name
+//   'object'    → distinct hue per SAM object group (material.name "objN")
+//   'pure'      → flat clay (shape only)
 function voxelColor(out, prim, mode) {
   if (mode === 'pure') return out.setRGB(VOXEL_CLAY[0], VOXEL_CLAY[1], VOXEL_CLAY[2]);
   if (mode === 'object') {
@@ -26,7 +30,11 @@ function voxelColor(out, prim, mode) {
     const id = parseInt(m[1], 10);
     return out.setHSL((id * 0.6180339887) % 1, 0.62, 0.56); // golden-ratio distinct hues
   }
-  const c = (prim.material && prim.material.color) || DEFAULT_COLOR; // 'front'
+  if (mode === 'front') {
+    const h = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(prim.name || '');
+    if (h) return out.setRGB(parseInt(h[1], 16) / 255, parseInt(h[2], 16) / 255, parseInt(h[3], 16) / 255);
+  }
+  const c = (prim.material && prim.material.color) || DEFAULT_COLOR; // 'multiview' / fallback
   return out.setRGB(c[0], c[1], c[2]);
 }
 

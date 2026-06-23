@@ -204,10 +204,18 @@ def align_views(cells: list["ViewCell"], *, target_fill: float = 0.9) -> None:
         nh = max(1, min(H, int(round(crop.shape[0] * scale))))
         nw = max(1, min(W, int(round(crop.shape[1] * scale))))
         r = cv2.resize(crop, (nw, nh), interpolation=cv2.INTER_NEAREST).astype(bool)
-        out = np.zeros((H, W), dtype=bool)
         oy, ox = (H - nh) // 2, (W - nw) // 2
+        out = np.zeros((H, W), dtype=bool)
         out[oy:oy + nh, ox:ox + nw] = r
         c.silhouette = out
+
+        # Align the RGB identically so colour sampling stays registered with the
+        # carved silhouette (else front/multi-view colour is offset).
+        rgb_crop = c.rgb[b[0]:b[1] + 1, b[2]:b[3] + 1]
+        rgb_r = cv2.resize(rgb_crop, (nw, nh), interpolation=cv2.INTER_AREA)
+        canvas = np.tile(_bg_color(c.rgb).astype(np.uint8), (H, W, 1))
+        canvas[oy:oy + nh, ox:ox + nw] = rgb_r
+        c.rgb = canvas
 
 
 # --------------------------------------------------------------------------- #
@@ -386,10 +394,38 @@ def _surface_voxels(occ: np.ndarray) -> np.ndarray:
     return occ & ~nbr_all
 
 
+def _voxel_view(vox: np.ndarray, ix: int, iy: int, iz: int) -> str:
+    """Pick the 2x2-sheet view that looks onto this surface voxel's exposed face.
+
+    Priority front(+Z) > side(+X) > top(+Y) > back(-Z); -X falls back to side and
+    everything else to front (the sheet has no left/bottom view).
+    """
+    vr = vox.shape[0]
+
+    def empty(ax: int, d: int) -> bool:
+        j = [ix, iy, iz]
+        j[ax] += d
+        if j[ax] < 0 or j[ax] >= vr:
+            return True
+        return not vox[j[0], j[1], j[2]]
+
+    if empty(2, 1):
+        return "front"
+    if empty(0, 1):
+        return "side"
+    if empty(1, 1):
+        return "top"
+    if empty(2, -1):
+        return "back"
+    if empty(0, -1):
+        return "side"
+    return "front"
+
+
 def occupancy_to_voxel_doc(
     occ: np.ndarray, centroid, scale, y_min: float = 0.0, *,
     view_res: int = 44, max_cubes: int = 4000, source_image=None,
-    color=(0.45, 0.55, 0.7), color_fn=None, object_fn=None,
+    color=(0.45, 0.55, 0.7), color_fn=None, object_fn=None, mv_color_fn=None,
 ) -> dict:
     """Build a ``.cgb`` of cubes visualising the carved voxel solid (debug view).
 
@@ -418,16 +454,27 @@ def occupancy_to_voxel_doc(
     doc["metadata"]["generator"] = "CubeGB voxel debug"
     size = float(scale / vr) * 1.03               # slight overlap hides seams
     flat = [float(c) for c in color]
+    def _hex(rgb):
+        return "#%02x%02x%02x" % tuple(int(np.clip(c, 0, 1) * 255) for c in rgb)
+
     for k, (ix, iy, iz) in enumerate(idx):
         cn = (np.array([ix, iy, iz]) + 0.5) / vr - 0.5
         p = (cn - centroid) * scale
-        col = [float(c) for c in color_fn(float(cn[0]), float(cn[1]))] if color_fn else flat
-        # Object group id (from front SAM segments) is recorded in material.name
-        # so downstream tools can group voxels by object (e.g. obj3, or "bg").
+        front = color_fn(float(cn[0]), float(cn[1])) if color_fn else flat
+        # material.color = multi-view colour (sampled from the view facing this
+        # voxel's exposed face); the front-only colour is kept in `name` (hex) so
+        # the UI can show a front-vs-multiview comparison.
+        if mv_color_fn is not None:
+            view = _voxel_view(vox, ix, iy, iz)
+            mv = mv_color_fn(view, (ix + 0.5) / vr, (iy + 0.5) / vr, (iz + 0.5) / vr)
+            col = [float(c) for c in (mv if mv is not None else front)]
+        else:
+            col = [float(c) for c in front]
+        # Object group id (from front SAM segments) → material.name (obj3 / bg).
         oid = object_fn(float(cn[0]), float(cn[1])) if object_fn else None
         mname = f"obj{oid}" if (oid is not None and oid >= 0) else "bg"
         cgb.add_primitive(doc, cgb.cube(
-            f"v{k}", [size, size, size],
+            f"v{k}", [size, size, size], name=_hex(front),
             transform=cgb.make_transform(position=[float(p[0]), float(p[1] - y_min), float(p[2])]),
             color=col, material_name=mname))
     return doc
@@ -494,6 +541,22 @@ def image_to_cgb_multiview(
         vi = int(np.clip((1.0 - (cy + 0.5)) * H, 0, H - 1))
         c = front.rgb[vi, ui].astype(float) / 255.0
         return (float(c[0]), float(c[1]), float(c[2]))
+
+    # Multi-view colour: sample the RGB of the view facing a voxel's exposed face
+    # (front/side/back/top), so sides and the back get their own colour instead
+    # of the front colour smeared across them. Falls back to the front view.
+    cells_by_name = {c.name: c for c in cells}
+
+    def view_rgb(viewname, x01, y01, z01):
+        c = cells_by_name.get(viewname)
+        if c is None or c.blank:
+            viewname, c = "front", front
+        u, v = _project(viewname, x01, y01, z01)
+        Hc, Wc = c.rgb.shape[:2]
+        ui = int(np.clip(u * Wc, 0, Wc - 1))
+        vi = int(np.clip(v * Hc, 0, Hc - 1))
+        px = c.rgb[vi, ui].astype(float) / 255.0
+        return (float(px[0]), float(px[1]), float(px[2]))
 
     # Object grouping: SAM-segment the front view and tag each pixel with an
     # object id, so voxels can record which object they belong to (material.name).
@@ -597,7 +660,7 @@ def image_to_cgb_multiview(
     if voxel_out_path is not None:
         vdoc = occupancy_to_voxel_doc(
             occ, centroid, scale, y_min, source_image=sheet_path,
-            color_fn=front_color, object_fn=object_fn,
+            color_fn=front_color, mv_color_fn=view_rgb, object_fn=object_fn,
             view_res=min(int(res), 72), max_cubes=16000)
         cgb.save(vdoc, voxel_out_path)
         summary["voxel_out_path"] = str(voxel_out_path)

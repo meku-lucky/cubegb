@@ -15,6 +15,13 @@ All notable changes to CubeGB are documented here. The format follows
   ② final primitives, ③ pure voxels (shape only), ④ voxels coloured by object
   group. Voxels render via `InstancedMesh` (one draw call) so several panels of
   thousands of cubes stay smooth.
+- **Multi-view voxel colour**: each voxel is coloured from the view facing its
+  exposed surface (front/side/back/top), so sides and the back get their own
+  colour instead of the front colour smeared across them. `align_views` now also
+  registers the RGB so colour sampling lines up with the carved silhouette.
+  Studio panel ① shows the multi-view colour, ③ the front-only colour (for
+  comparison); both colours are carried on the voxel `.cgb` (multi-view in
+  `material.color`, front in the cube `name` as hex).
 - **Voxel resolution selector** in Studio (96–512, default 128). Carving and
   primitive-fitting resolutions are **decoupled** (`fit_res`), so a high voxel
   resolution (e.g. 256/512) keeps the voxel view crisp while primitive fitting

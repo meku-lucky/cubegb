@@ -213,8 +213,8 @@ function renderDocs() {
   }
   // Panels ①③④ — the same voxel doc rendered three ways (front / pure / object)
   const voxelPanels = [
-    [voxelViewer, emptyVoxel, 'front'],
-    [pureViewer, emptyPure, 'pure'],
+    [voxelViewer, emptyVoxel, 'multiview'],
+    [pureViewer, emptyPure, 'front'],
     [objectViewer, emptyObject, 'object'],
   ];
   for (const [v, empty, mode] of voxelPanels) {
