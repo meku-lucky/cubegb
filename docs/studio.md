@@ -54,6 +54,15 @@ export CUBEGB_DEPTH_CHECKPOINT=/path/to/depth_anything_v2.pth   # optional
 
 ![Studio 4-panel debug view](../images/studio-quad.png)
 
+### Orientation toggles (multi-view)
+
+If a multi-view sheet carves with the wrong orientation (the side profile looks
+mirrored — face toward the back of the head — or a front-held item merges with a
+back one), tick **사이드 좌우 뒤집기 (flip-side)** and/or **탑 앞뒤 뒤집기
+(flip-top)** in the multi-view step and regenerate. The depth-axis convention
+differs between art tools; the defaults are correct for the bundled sample
+sheets.
+
 ### Voxel resolution
 
 The *생성 옵션* panel exposes a **voxel resolution** (96–512, default 128) for the

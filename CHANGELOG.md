@@ -11,7 +11,14 @@ All notable changes to CubeGB are documented here. The format follows
   PCA-align an object to its principal axes, fit/decompose primitives there
   (free to combine several), then inverse-transform each primitive back — so a
   cube/cylinder returns *rotated* to hug a tilted part instead of being
-  approximated by an upright box.
+  approximated by an upright box. Used by per-object reconstruction.
+- **Cube tie-break** in primitive fitting (`primfit._CUBE_BIAS`): a curved
+  primitive must beat the cube's IoU by a clear margin to be chosen, so boxy
+  parts stay cubes (simplest/most editable) while genuinely round parts still
+  pick cylinder/sphere/cone.
+- **Studio side/top carving toggles** (multi-view step): the depth-axis
+  convention varies by art tool, so *flip-side* / *flip-top* checkboxes switch it
+  per sheet. The default is correct for the sample sheets.
 - **Per-object reconstruction** (`recognition/object_recon.py`): reconstruct a
   single object from one clean silhouette by extruding it along depth (with a
   distance-transform *dome* for a convex solid) into a voxel + fitted primitives.
