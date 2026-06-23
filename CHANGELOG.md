@@ -9,9 +9,16 @@ All notable changes to CubeGB are documented here. The format follows
 ### Added
 - **Carved voxel debug view**: multi-view generation now also emits the carved
   voxel solid as a viewable `.cgb` of cubes (`occupancy_to_voxel_doc`), in the
-  same world frame as the fitted primitives.
-- **Studio 2×2 debug quad**: the 3D viewport is split into four panels — ① carved
-  voxels, ② final primitives, ③④ reserved for future intermediate-stage views.
+  same world frame as the fitted primitives, with per-voxel **front colour** and
+  **object-group id** (`material.name = obj{N}` from front SAM segments).
+- **Studio 2×2 debug quad** (four live 3D panels): ① carved voxels (colour),
+  ② final primitives, ③ pure voxels (shape only), ④ voxels coloured by object
+  group. Voxels render via `InstancedMesh` (one draw call) so several panels of
+  thousands of cubes stay smooth.
+- **Voxel resolution selector** in Studio (96–512, default 128). Carving and
+  primitive-fitting resolutions are **decoupled** (`fit_res`), so a high voxel
+  resolution (e.g. 256/512) keeps the voxel view crisp while primitive fitting
+  stays fast (~15–20s instead of minutes).
 
 ### Changed
 - **Multi-view carving quality**: silhouettes are now re-centred and commonly

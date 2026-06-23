@@ -11,8 +11,10 @@
 const $ = (id) => document.getElementById(id);
 
 // --- state ---
-let primViewer = null;       // CGBViewer for the final primitives (panel ②)
-let voxelViewer = null;      // CGBViewer for the carved voxels (panel ①)
+let primViewer = null;       // ② final primitives
+let voxelViewer = null;      // ① carved voxels (front colour)
+let pureViewer = null;       // ③ pure voxels (flat clay)
+let objectViewer = null;     // ④ voxels coloured by SAM object group
 let viewerStatus = 'loading'; // 'loading' | 'ready' | 'failed'
 let currentDoc = null;       // the .cgb document currently shown
 let currentVoxelDoc = null;
@@ -21,8 +23,9 @@ let sheetFile = null;        // selected 2x2 multi-view sheet File
 let entries = [];            // primitive entries for the sidebar list
 
 // --- elements ---
-const vpPrims = $('vpPrims'), vpVoxel = $('vpVoxel');
+const vpPrims = $('vpPrims'), vpVoxel = $('vpVoxel'), vpPure = $('vpPure'), vpObject = $('vpObject');
 const emptyPrims = $('emptyPrims'), emptyVoxel = $('emptyVoxel');
+const emptyPure = $('emptyPure'), emptyObject = $('emptyObject');
 const imgDrop = $('imgDrop'), imgInput = $('imgInput'), imgPreview = $('imgPreview');
 const sheetDrop = $('sheetDrop'), sheetInput = $('sheetInput'), sheetPreview = $('sheetPreview');
 const genBtn = $('genBtn'), genStatus = $('genStatus');
@@ -75,7 +78,9 @@ async function initViewers() {
         [...primList.children].forEach((li) => li.classList.toggle('active', li.dataset.id === id));
       },
     });
-    voxelViewer = new mod.CGBViewer(vpVoxel, { background: 0x121519, edges: false });
+    voxelViewer = new mod.CGBViewer(vpVoxel, { background: 0x121519 });
+    pureViewer = new mod.CGBViewer(vpPure, { background: 0x121519 });
+    objectViewer = new mod.CGBViewer(vpObject, { background: 0x121519 });
     viewerStatus = 'ready';
     if (currentDoc) renderDocs();  // a doc arrived before the viewers were ready
   } catch (e) {
@@ -151,6 +156,7 @@ genBtn.addEventListener('click', async () => {
   fd.append('device', $('device').value);
   fd.append('sam_model_type', $('samType').value);
   fd.append('max_segments', $('maxSeg').value);
+  fd.append('voxel_res', $('voxelRes').value);
 
   try {
     const res = await fetch('/api/generate', { method: 'POST', body: fd });
@@ -205,15 +211,20 @@ function renderDocs() {
     try { entries = primViewer.loadDoc(currentDoc); emptyPrims.style.display = 'none'; }
     catch (e) { showError('3D 렌더 실패(목록·내보내기는 가능): ' + e.message); }
   }
-  // Panel ① carved voxels
-  if (voxelViewer) {
+  // Panels ①③④ — the same voxel doc rendered three ways (front / pure / object)
+  const voxelPanels = [
+    [voxelViewer, emptyVoxel, 'front'],
+    [pureViewer, emptyPure, 'pure'],
+    [objectViewer, emptyObject, 'object'],
+  ];
+  for (const [v, empty, mode] of voxelPanels) {
+    if (!v) continue;
     if (currentVoxelDoc) {
-      try { voxelViewer.loadDoc(currentVoxelDoc); emptyVoxel.style.display = 'none'; }
-      catch (e) { /* ignore voxel render errors */ }
+      try { v.loadVoxels(currentVoxelDoc, mode); empty.style.display = 'none'; }
+      catch (e) { console.error('voxel render failed', e); }
     } else {
-      voxelViewer.clear();
-      emptyVoxel.innerHTML = '멀티뷰 2×2 시트로 생성하면<br>카빙된 복셀이 여기에 표시됩니다.';
-      emptyVoxel.style.display = 'flex';
+      v.clearVoxels();
+      empty.style.display = 'flex';
     }
   }
 }

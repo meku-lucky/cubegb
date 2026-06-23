@@ -105,6 +105,25 @@ def test_voxel_debug_doc_is_valid_and_capped():
     assert all(p["type"] == "cube" for p in doc["primitives"])
 
 
+def test_voxel_doc_records_object_groups():
+    """object_fn tags each voxel with its object group in material.name."""
+    import cgb
+    from recognition.multiview import occupancy_to_voxel_doc
+
+    X, Y, Z = _coords()
+    occ = ((X - R / 2) ** 2 + (Y - R / 2) ** 2 + (Z - R / 2) ** 2) <= 16 ** 2
+
+    # Object id by world x: left half -> obj0, right half -> obj1.
+    def object_fn(cx, cy):
+        return 0 if cx < 0 else 1
+
+    doc = occupancy_to_voxel_doc(occ, centroid=np.zeros(3), scale=1.0, view_res=32,
+                                 color_fn=None, object_fn=object_fn)
+    cgb.validate(doc)
+    names = {p["material"]["name"] for p in doc["primitives"]}
+    assert names == {"obj0", "obj1"}
+
+
 def test_partition_has_negligible_overlap():
     """Decomposition partitions voxels: total volume ≈ union (little redundancy)."""
     X, Y, Z = _coords()

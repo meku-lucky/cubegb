@@ -118,6 +118,7 @@ async def generate(
     prior_weight: float = Form(0.6),
     fg_depth_thresh: float = Form(0.15),
     ground: bool = Form(True),
+    voxel_res: int = Form(128),
 ) -> JSONResponse:
     """Run the recognition pipeline on an uploaded image and return a ``.cgb``.
 
@@ -185,6 +186,7 @@ async def generate(
                     str(sheet_path), str(out_path),
                     sam_checkpoint=sam_ckpt, device=dev,
                     sam_model_type=sam_model_type,
+                    res=max(64, min(512, int(voxel_res))),
                     max_segments=int(max_segments),
                     prior_weight=float(prior_weight),
                     ground=bool(ground),

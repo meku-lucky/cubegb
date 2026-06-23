@@ -159,6 +159,15 @@
         <details id="genOpts">
           <summary>생성 옵션</summary>
           <div class="inner">
+            <label class="field">복셀 해상도 (카빙) — 높을수록 정밀·느림 (프리미티브는 항상 빠르게)</label>
+            <select id="voxelRes">
+              <option value="96">96</option>
+              <option value="128" selected>128 (기본)</option>
+              <option value="192">192</option>
+              <option value="256">256</option>
+              <option value="384">384</option>
+              <option value="512">512</option>
+            </select>
             <label class="field">SAM 체크포인트 경로</label>
             <input id="samCkpt" type="text" placeholder="…/sam_vit_h_4b8939.pth" />
             <label class="field">Depth 체크포인트 경로 (선택)</label>
@@ -214,7 +223,7 @@
   <main id="viewport">
     <div id="quad">
       <div class="panel">
-        <div class="plabel">① 복셀 (카빙 결과)</div>
+        <div class="plabel">① 카빙 복셀 (컬러)</div>
         <div class="pview" id="vpVoxel"></div>
         <div class="pempty" id="emptyVoxel">멀티뷰 2×2 시트로 생성하면<br>카빙된 복셀이 여기에 표시됩니다.</div>
       </div>
@@ -223,13 +232,15 @@
         <div class="pview" id="vpPrims"></div>
         <div class="pempty" id="emptyPrims">이미지로 생성하거나<br>.cgb를 불러오면 표시됩니다.</div>
       </div>
-      <div class="panel aux">
-        <div class="plabel">③ 디버그 (예정)</div>
-        <div class="pempty">중간 과정 뷰 (추후)<br><span style="font-size:10px">예: 실루엣 · 깊이 · 점군</span></div>
+      <div class="panel">
+        <div class="plabel">③ 순수 복셀 (형상)</div>
+        <div class="pview" id="vpPure"></div>
+        <div class="pempty" id="emptyPure">색 없이 카빙된 순수 형상</div>
       </div>
-      <div class="panel aux">
-        <div class="plabel">④ 디버그 (예정)</div>
-        <div class="pempty">중간 과정 뷰 (추후)</div>
+      <div class="panel">
+        <div class="plabel">④ 오브젝트 그룹 (SAM)</div>
+        <div class="pview" id="vpObject"></div>
+        <div class="pempty" id="emptyObject">복셀을 오브젝트별 색으로 그룹핑</div>
       </div>
     </div>
     <div id="vpHint">좌-드래그 회전 · 우-드래그 이동 · 휠 줌</div>

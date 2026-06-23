@@ -389,7 +389,7 @@ def _surface_voxels(occ: np.ndarray) -> np.ndarray:
 def occupancy_to_voxel_doc(
     occ: np.ndarray, centroid, scale, y_min: float = 0.0, *,
     view_res: int = 44, max_cubes: int = 4000, source_image=None,
-    color=(0.45, 0.55, 0.7), color_fn=None,
+    color=(0.45, 0.55, 0.7), color_fn=None, object_fn=None,
 ) -> dict:
     """Build a ``.cgb`` of cubes visualising the carved voxel solid (debug view).
 
@@ -422,10 +422,14 @@ def occupancy_to_voxel_doc(
         cn = (np.array([ix, iy, iz]) + 0.5) / vr - 0.5
         p = (cn - centroid) * scale
         col = [float(c) for c in color_fn(float(cn[0]), float(cn[1]))] if color_fn else flat
+        # Object group id (from front SAM segments) is recorded in material.name
+        # so downstream tools can group voxels by object (e.g. obj3, or "bg").
+        oid = object_fn(float(cn[0]), float(cn[1])) if object_fn else None
+        mname = f"obj{oid}" if (oid is not None and oid >= 0) else "bg"
         cgb.add_primitive(doc, cgb.cube(
             f"v{k}", [size, size, size],
             transform=cgb.make_transform(position=[float(p[0]), float(p[1] - y_min), float(p[2])]),
-            color=col, material_name="voxel"))
+            color=col, material_name=mname))
     return doc
 
 
@@ -439,7 +443,8 @@ def image_to_cgb_multiview(
     sam_checkpoint: str,
     device: Optional[str] = None,
     sam_model_type: str = "vit_h",
-    res: int = 96,
+    res: int = 128,
+    fit_res: int = 128,
     max_segments: int = 12,
     prior_weight: float = 0.6,
     target_size: float = 1.5,
@@ -448,6 +453,7 @@ def image_to_cgb_multiview(
     method: str = "primitives",
     max_boxes: int = 24,
     voxel_out_path: Optional[str] = None,
+    segment_objects: bool = True,
 ) -> dict:
     """Reconstruct a ``.cgb`` from a 2x2 multi-view sheet via space carving.
 
@@ -489,6 +495,27 @@ def image_to_cgb_multiview(
         c = front.rgb[vi, ui].astype(float) / 255.0
         return (float(c[0]), float(c[1]), float(c[2]))
 
+    # Object grouping: SAM-segment the front view and tag each pixel with an
+    # object id, so voxels can record which object they belong to (material.name).
+    # This accumulates structure for future per-object simplification.
+    object_fn = None
+    n_objects = 0
+    if voxel_out_path is not None and segment_objects:
+        try:
+            seg = Segmenter(sam_checkpoint, model_type=sam_model_type, device=device)
+            obj_masks = seg.segment(front.rgb, max_masks=max_segments)
+            idmap = -np.ones((H, W), dtype=np.int32)
+            for oid, m in enumerate(sorted(obj_masks, key=lambda p: p.area, reverse=True)):
+                idmap[np.asarray(m.mask, bool) & (idmap < 0)] = oid
+            n_objects = len(obj_masks)
+
+            def object_fn(cx: float, cy: float, _m=idmap) -> int:
+                ui = int(np.clip((cx + 0.5) * W, 0, W - 1))
+                vi = int(np.clip((1.0 - (cy + 0.5)) * H, 0, H - 1))
+                return int(_m[vi, ui])
+        except Exception:
+            object_fn = None  # segmentation is best-effort; never block generation
+
     fits: list = []
     if method == "primitives":
         # Recursive shape abstraction: explain the carved solid with VARIED
@@ -496,7 +523,13 @@ def image_to_cgb_multiview(
         # type by IoU and partitioning the voxels (little overlap). See
         # recognition.primfit.
         from .primfit import decompose_occupancy
-        for vp in decompose_occupancy(occ, max_prims=max_boxes):
+        # Decouple: fit primitives on a (possibly downsampled) grid so a high
+        # carving res — used for the voxel debug view — doesn't make the
+        # decomposition crawl (256+ would take minutes at full res).
+        occ_fit = occ
+        if fit_res and res > fit_res:
+            occ_fit = _downsample_max(occ, int(np.ceil(res / fit_res)))
+        for vp in decompose_occupancy(occ_fit, max_prims=max_boxes):
             fits.append(_voxprim_to_fit(vp, centroid, scale, front_color))
     elif method == "boxes":
         # Tile the carved SOLID with axis-aligned boxes (no gaps / no floating
@@ -552,14 +585,20 @@ def image_to_cgb_multiview(
 
     summary = {
         "out_path": str(out_path), "views_used": used, "res": int(res),
+        "fit_res": int(min(res, fit_res)) if fit_res else int(res),
         "voxels": int(occ.sum()), "n_primitives": len(fits),
+        "n_objects": int(n_objects),
         "primitives": [{"type": f.prim_type} for f in fits],
     }
 
-    # Optional: also emit the carved voxel solid as a viewable .cgb (debug view).
+    # Optional: also emit the carved voxel solid as a viewable .cgb (debug view),
+    # carrying per-voxel front colour AND object id (material.name). The display
+    # resolution scales with the carve res but is capped for the viewer.
     if voxel_out_path is not None:
-        vdoc = occupancy_to_voxel_doc(occ, centroid, scale, y_min,
-                                      source_image=sheet_path, color_fn=front_color)
+        vdoc = occupancy_to_voxel_doc(
+            occ, centroid, scale, y_min, source_image=sheet_path,
+            color_fn=front_color, object_fn=object_fn,
+            view_res=min(int(res), 72), max_cubes=16000)
         cgb.save(vdoc, voxel_out_path)
         summary["voxel_out_path"] = str(voxel_out_path)
         summary["voxel_cubes"] = len(vdoc["primitives"])

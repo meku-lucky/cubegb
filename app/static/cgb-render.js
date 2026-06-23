@@ -14,6 +14,21 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const DEFAULT_COLOR = [0.7, 0.7, 0.72];
+const VOXEL_CLAY = [0.66, 0.70, 0.76];
+
+// Per-voxel colour for the three voxel panels.
+function voxelColor(out, prim, mode) {
+  if (mode === 'pure') return out.setRGB(VOXEL_CLAY[0], VOXEL_CLAY[1], VOXEL_CLAY[2]);
+  if (mode === 'object') {
+    const name = (prim.material && prim.material.name) || 'bg';
+    const m = /^obj(\d+)$/.exec(name);
+    if (!m) return out.setRGB(0.40, 0.42, 0.46);          // background / ungrouped
+    const id = parseInt(m[1], 10);
+    return out.setHSL((id * 0.6180339887) % 1, 0.62, 0.56); // golden-ratio distinct hues
+  }
+  const c = (prim.material && prim.material.color) || DEFAULT_COLOR; // 'front'
+  return out.setRGB(c[0], c[1], c[2]);
+}
 
 function buildGeometry(type, params) {
   params = params || {};
@@ -99,6 +114,7 @@ export class CGBViewer {
 
     this.modelGroup = new THREE.Group();
     this.scene.add(this.modelGroup);
+    this.voxelGroup = null;   // InstancedMesh group for voxel docs
 
     this._onResize = () => this.resize();
     window.addEventListener('resize', this._onResize);
@@ -181,9 +197,56 @@ export class CGBViewer {
     this.activeId = null;
   }
 
+  clearVoxels() {
+    if (this.voxelGroup) {
+      this.voxelGroup.geometry.dispose();
+      this.voxelGroup.material.dispose();
+      this.scene.remove(this.voxelGroup);
+      this.voxelGroup = null;
+    }
+  }
+
+  /**
+   * Render a voxel .cgb (many same-size cubes) as a single InstancedMesh — fast
+   * enough for thousands of voxels across several panels.
+   * @param {object} doc    a .cgb whose primitives are uniform cubes
+   * @param {string} mode   'front' (material.color) | 'pure' (flat clay) |
+   *                        'object' (palette by material.name "objN" / "bg")
+   */
+  loadVoxels(doc, mode = 'front') {
+    this.clearVoxels();
+    const prims = (doc && doc.primitives) || [];
+    if (!prims.length) return 0;
+    const s = (prims[0].params && prims[0].params.size) || [0.05, 0.05, 0.05];
+    const geo = new THREE.BoxGeometry(s[0], s[1], s[2]);
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0.04 });
+    const inst = new THREE.InstancedMesh(geo, mat, prims.length);
+    const dummy = new THREE.Object3D();
+    const col = new THREE.Color();
+
+    prims.forEach((p, i) => {
+      const pos = (p.transform && p.transform.position) || [0, 0, 0];
+      dummy.position.set(pos[0], pos[1], pos[2]);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+      inst.setColorAt(i, voxelColor(col, p, mode));
+    });
+    inst.instanceMatrix.needsUpdate = true;
+    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+
+    this.voxelGroup = inst;
+    this.scene.add(inst);
+    this._frameObject(inst);
+    return prims.length;
+  }
+
   frame() {
     if (!this.primEntries.length) return;
-    const box = new THREE.Box3().setFromObject(this.modelGroup);
+    this._frameObject(this.modelGroup);
+  }
+
+  _frameObject(obj) {
+    const box = new THREE.Box3().setFromObject(obj);
     if (box.isEmpty()) return;
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
