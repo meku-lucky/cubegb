@@ -297,12 +297,12 @@ async def generate(
                     flip_top=bool(flip_top),
                 )
             elif sel_ids is not None:
-                # Object mode: reconstruct only the picked objects (reuse cached
-                # SAM masks from /api/segment) + emit the coloured voxel.
-                from recognition.object_recon import image_to_cgb_objects
-                summary = image_to_cgb_objects(
+                # Object mode: reconstruct only the picked objects, each in
+                # ISOLATION (high quality), reusing the cached SAM masks.
+                from recognition.object_recon import image_to_cgb_selected
+                summary = image_to_cgb_selected(
                     str(img_path), str(out_path),
-                    sam_checkpoint=sam_ckpt, depth_checkpoint=depth_ckpt or None,
+                    sam_checkpoint=sam_ckpt,
                     device=dev, sam_model_type=sam_model_type,
                     max_objects=int(max_segments), ground=bool(ground),
                     voxel_out_path=str(voxel_out),

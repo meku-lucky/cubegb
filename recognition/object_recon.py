@@ -308,6 +308,134 @@ def _voxel_doc(occ, objid, colmap, centroid, scale, res, *, ground, fits):
     return doc
 
 
+def image_to_cgb_selected(
+    image_path: str,
+    out_path: str,
+    *,
+    sam_checkpoint: str,
+    masks=None,
+    select_ids=None,
+    device: Optional[str] = None,
+    sam_model_type: str = "vit_h",
+    max_objects: int = 12,
+    res: int = 80,
+    depth_frac: float = 0.42,
+    target_size: float = 1.5,
+    per_object_prims: int = 8,
+    ground: bool = True,
+    voxel_out_path: Optional[str] = None,
+) -> dict:
+    """Reconstruct the **selected** objects, each in **isolation** (high quality).
+
+    Each picked object is reconstructed on its own (dome silhouette-extrude) and
+    oriented-fit — so one part (a shield → clean disc, a sword → blade) comes out
+    well instead of being squashed in a shared scene grid. A single selection is
+    just that part; multiple are placed by their image position (depth/composition
+    deliberately deferred). Returns the same summary shape as the other pipelines.
+    """
+    import cgb
+
+    from .segment import Segmenter, load_image_rgb
+    from .fit import build_document, FitResult
+    from .oriented_fit import fit_oriented_primitives
+
+    img = load_image_rgb(image_path)
+    H, W = img.shape[:2]
+    if masks is None:
+        masks = Segmenter(sam_checkpoint, model_type=sam_model_type, device=device).segment(
+            img, max_masks=max_objects)
+    objects = partition_objects(masks, H, W)
+    if select_ids is not None:
+        want = set(int(i) for i in select_ids)
+        objects = [(i, sel) for (i, sel) in objects if int(i) in want]
+    if not objects:
+        raise RuntimeError("No objects selected — pick at least one part.")
+
+    maxwh = max(H, W)
+    multi = len(objects) > 1
+    all_fits: list = []
+    voxels: list = []                                   # (pos(3,), size, color, oid)
+    obj_summ = []
+    for oid, sel in objects:
+        occ, colmap = reconstruct_object(sel, img, res=res, depth_frac=depth_frac, dome=True)
+        if not occ.any():
+            continue
+        R = occ.shape[0]
+        idx = np.argwhere(occ)
+        norm = (idx + 0.5) / R - 0.5
+        centroid = norm.mean(0)
+        ext = float((norm.max(0) - norm.min(0)).max())
+        ys, xs = np.nonzero(sel)
+        obj_px = max(int(xs.max() - xs.min()), int(ys.max() - ys.min())) + 1
+        s = (obj_px / maxwh * target_size) / max(ext, 1e-9)     # normalised → world
+        if multi:                                                # place by image position
+            cx = ((xs.min() + xs.max()) / 2 - W / 2) / maxwh * target_size
+            cy = (H / 2 - (ys.min() + ys.max()) / 2) / maxwh * target_size
+            offset = np.array([cx, cy, 0.0])
+        else:
+            offset = np.zeros(3)
+
+        ocol = _colmap_mean(colmap)
+        pts_world = (norm - centroid) * s + offset
+        new = fit_oriented_primitives(pts_world, max_prims=per_object_prims, color=ocol)
+        all_fits.extend(new)
+        obj_summ.append({"object": int(oid), "voxels": int(occ.sum()), "primitives": len(new)})
+
+        from .multiview import _surface_voxels       # hollow shell keeps the cube
+        vsize = float(s / R) * 1.03                   # count viewer-friendly
+        for (ix, iy, iz) in np.argwhere(_surface_voxels(occ)):
+            cn = (np.array([ix, iy, iz]) + 0.5) / R - 0.5
+            p = (cn - centroid) * s + offset
+            voxels.append((p, vsize, list(colmap.get((int(ix), int(iy), int(iz)), (0.6, 0.55, 0.5))), int(oid)))
+
+    if not all_fits:
+        raise RuntimeError("No primitives could be fit.")
+
+    # Centre the group in x/z and ground it on y.
+    pos = np.array([f.position for f in all_fits])
+    shift = np.array([pos[:, 0].mean(), 0.0, pos[:, 2].mean()])
+    y_min = min(_min_y_of(f) for f in all_fits)
+    shift[1] = y_min if (ground and np.isfinite(y_min)) else 0.0
+
+    all_fits = [FitResult(f.prim_type,
+                          (f.position[0] - shift[0], f.position[1] - shift[1], f.position[2] - shift[2]),
+                          f.rotation_euler, f.params, f.residual, f.color) for f in all_fits]
+    doc = build_document(all_fits, source_image=str(image_path))
+    cgb.save(doc, out_path)
+
+    summary = {
+        "out_path": str(out_path), "n_objects": len(obj_summ),
+        "n_primitives": len(all_fits), "voxels": sum(o["voxels"] for o in obj_summ),
+        "objects": obj_summ, "primitives": [{"type": f.prim_type} for f in all_fits],
+    }
+    if voxel_out_path is not None:
+        vdoc = cgb.new_document()
+        vdoc["metadata"]["generator"] = "CubeGB selected voxels"
+        for k, (p, sz, col, oid) in enumerate(voxels):
+            cgb.add_primitive(vdoc, cgb.cube(
+                f"v{k}", [sz, sz, sz], material_name=f"obj{oid}",
+                transform=cgb.make_transform(position=[float(p[0] - shift[0]),
+                                                       float(p[1] - shift[1]),
+                                                       float(p[2] - shift[2])]),
+                color=col))
+        cgb.save(vdoc, voxel_out_path)
+        summary["voxel_out_path"] = str(voxel_out_path)
+        summary["voxel_cubes"] = len(vdoc["primitives"])
+    return summary
+
+
+def _colmap_mean(colmap):
+    if not colmap:
+        return (0.7, 0.6, 0.45)
+    a = np.mean(list(colmap.values()), axis=0)
+    return (float(a[0]), float(a[1]), float(a[2]))
+
+
+def _min_y_of(fit) -> float:
+    from .fit import _lowest_y
+    return _lowest_y(fit)
+
+
 def object_to_documents(
     occ: np.ndarray,
     colmap: Optional[dict] = None,

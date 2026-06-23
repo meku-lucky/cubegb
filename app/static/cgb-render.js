@@ -225,8 +225,9 @@ export class CGBViewer {
     this.clearVoxels();
     const prims = (doc && doc.primitives) || [];
     if (!prims.length) return 0;
-    const s = (prims[0].params && prims[0].params.size) || [0.05, 0.05, 0.05];
-    const geo = new THREE.BoxGeometry(s[0], s[1], s[2]);
+    // Unit box + per-instance scale, so voxel docs with mixed cube sizes (e.g.
+    // several objects at different scales) render correctly.
+    const geo = new THREE.BoxGeometry(1, 1, 1);
     const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0.04 });
     const inst = new THREE.InstancedMesh(geo, mat, prims.length);
     const dummy = new THREE.Object3D();
@@ -234,7 +235,9 @@ export class CGBViewer {
 
     prims.forEach((p, i) => {
       const pos = (p.transform && p.transform.position) || [0, 0, 0];
+      const sz = (p.params && p.params.size) || [0.05, 0.05, 0.05];
       dummy.position.set(pos[0], pos[1], pos[2]);
+      dummy.scale.set(sz[0], sz[1], sz[2]);
       dummy.updateMatrix();
       inst.setMatrixAt(i, dummy.matrix);
       inst.setColorAt(i, voxelColor(col, p, mode));
