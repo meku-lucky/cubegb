@@ -20,11 +20,12 @@ All notable changes to CubeGB are documented here. The format follows
   block for an object-by-object scene pipeline.
 
 ### Fixed
-- **Side/top carving convention** in multi-view: the side and top views disagreed
-  on the depth axis, which mirrored the side (face toward the back of the head)
-  and merged a front-held sword with the back tail. Read from the sample sheets,
-  the side profile faces image-right and the top's head is at image-top, so
-  `side: u=z` and `top: v=1-z`. Symmetric props are unaffected.
+- **Side/top carving convention** in multi-view: the side/top depth axes were
+  reversed, mirroring the side (face toward the back of the head) and merging a
+  front-held sword with the back tail. Correct default (confirmed on the sample
+  sheets) is `side: u=1-z`, `top: v=z`. The convention varies by art tool, so
+  Studio also exposes **flip-side / flip-top** toggles (multi-view step) to switch
+  it per sheet. Symmetric props are unaffected.
 
 ### Added
 - **Carved voxel debug view**: multi-view generation now also emits the carved

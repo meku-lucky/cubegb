@@ -230,17 +230,17 @@ def _project(name: str, x: np.ndarray, y: np.ndarray, z: np.ndarray,
 
     The depth axis is ambiguous across art tools (is the side a left/right view?
     does the top put the front at image-top or bottom?), so ``flip_side`` /
-    ``flip_top`` toggle each view's depth direction. Defaults: side ``u=z``,
-    top ``v=1-z``.
+    ``flip_top`` toggle each view's depth direction. Defaults (verified correct on
+    the sample sheets): side ``u=1-z``, top ``v=z``.
     """
     if name == "front":
         return x, 1.0 - y
     if name == "back":
         return 1.0 - x, 1.0 - y
     if name == "side":
-        return (1.0 - z if flip_side else z), 1.0 - y
+        return (z if flip_side else 1.0 - z), 1.0 - y
     if name == "top":
-        return x, (z if flip_top else 1.0 - z)
+        return x, (1.0 - z if flip_top else z)
     raise ValueError(f"unknown view {name!r}")
 
 
