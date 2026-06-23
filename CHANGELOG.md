@@ -6,6 +6,12 @@ All notable changes to CubeGB are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.0.1] - 2026-06-23
+
+First tagged pre-release. Image → editable parametric-primitive blockout, end to
+end: `.cgb` format → viewer → baker → Blender importer → recognition → ComfyUI
+nodes → CubeGB Studio GUI.
+
 ### Changed
 - **Multi-view precision mode now abstracts the carved voxel solid into *varied*
   primitives** (`recognition/primfit.py`): a top-down recursive decomposition
@@ -37,4 +43,5 @@ All notable changes to CubeGB are documented here. The format follows
   export keep working even if it fails to load.
 - Documentation and pytest suite (format + baker + Studio backend).
 
-[Unreleased]: https://github.com/cubegb/cubegb
+[Unreleased]: https://github.com/meku-lucky/cubegb/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/meku-lucky/cubegb/releases/tag/v0.0.1

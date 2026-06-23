@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cubegb"
-version = "0.1.0"
+version = "0.0.1"
 description = "Image-to-blockout: reconstruct an image as editable parametric 3D primitives (.cgb)."
 readme = "README.md"
 requires-python = ">=3.10"

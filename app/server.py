@@ -61,7 +61,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_SAM_CHECKPOINT = os.environ.get("CUBEGB_SAM_CHECKPOINT", "")
 DEFAULT_DEPTH_CHECKPOINT = os.environ.get("CUBEGB_DEPTH_CHECKPOINT", "")
 
-app = FastAPI(title="CubeGB Studio", version="0.1.0")
+app = FastAPI(title="CubeGB Studio", version="0.0.1")
 
 
 # --------------------------------------------------------------------------- #
