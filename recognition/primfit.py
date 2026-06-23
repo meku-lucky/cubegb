@@ -32,6 +32,11 @@ from typing import Optional
 import numpy as np
 
 
+# Tie-break margin: a curved primitive must beat the cube's IoU by more than this
+# to be chosen over it (cubes are simplest and stay editable).
+_CUBE_BIAS = 0.05
+
+
 @dataclass
 class VoxPrim:
     """A fitted primitive in **normalised world units** (grid maps to [-0.5, 0.5]).
@@ -169,7 +174,10 @@ def _fit_region(mask):
                                 "lo": a_lo, "hi": a_hi, "apex_high": apex_high},
                                _iou(cone, mask)))
 
-    best = max(candidates, key=lambda c: c[2])
+    # Prefer the cube on near-ties: it's the simplest/most-editable primitive and
+    # an oriented box hugs most parts well, so a curved candidate must beat it by
+    # a clear margin to be chosen (a genuinely round part still wins easily).
+    best = max(candidates, key=lambda c: c[2] + (_CUBE_BIAS if c[0] == "cube" else 0.0))
     return best
 
 

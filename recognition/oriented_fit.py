@@ -49,13 +49,23 @@ def _voxelize(A: np.ndarray, res: int, fill: float) -> tuple[np.ndarray, np.ndar
     idx = np.clip(((n + 0.5) * res).astype(int), 0, res - 1)
     occ = np.zeros((res, res, res), dtype=bool)
     occ[idx[:, 0], idx[:, 1], idx[:, 2]] = True
-    try:                                   # solidify the thin shell left by
-        from scipy import ndimage           # re-voxelising rotated points
-        occ = ndimage.binary_closing(occ, iterations=1)
-        occ = ndimage.binary_fill_holes(occ)
-    except Exception:  # pragma: no cover
-        pass
-    return occ, b, span
+    occ = _solidify(occ)                   # re-voxelising rotated points leaves
+    return occ, b, span                    # surface gaps; make the part solid
+
+
+def _solidify(occ: np.ndarray) -> np.ndarray:
+    """Fill a point-splatted grid into a solid via a 3-axis sweep.
+
+    A voxel is kept if, along **every** axis, it lies between the first and last
+    occupied voxel on that line. Exact for boxes/convex parts (so a re-voxelised
+    box reads full, not porous) — which keeps the primitive-type vote honest.
+    """
+    solid = np.ones_like(occ)
+    for ax in range(3):
+        fwd = np.cumsum(occ, axis=ax) > 0                       # something at/before
+        bwd = np.flip(np.cumsum(np.flip(occ, ax), axis=ax) > 0, ax)  # at/after
+        solid &= fwd & bwd
+    return solid
 
 
 def fit_oriented_primitives(
