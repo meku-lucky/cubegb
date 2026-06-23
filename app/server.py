@@ -119,6 +119,8 @@ async def generate(
     fg_depth_thresh: float = Form(0.15),
     ground: bool = Form(True),
     voxel_res: int = Form(128),
+    flip_side: bool = Form(False),
+    flip_top: bool = Form(False),
 ) -> JSONResponse:
     """Run the recognition pipeline on an uploaded image and return a ``.cgb``.
 
@@ -191,6 +193,8 @@ async def generate(
                     prior_weight=float(prior_weight),
                     ground=bool(ground),
                     voxel_out_path=str(voxel_out),
+                    flip_side=bool(flip_side),
+                    flip_top=bool(flip_top),
                 )
             else:
                 # Draft mode: single image (returns a summary, writes the .cgb).

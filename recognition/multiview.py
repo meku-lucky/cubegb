@@ -224,19 +224,28 @@ def align_views(cells: list["ViewCell"], *, target_fill: float = 0.9) -> None:
 # Each view maps a normalised world point (x, y, z) in [0,1]^3 (X right, Y up,
 # Z toward the front camera) to a normalised image coord (u right, v down).
 # All upright views share v = 1 - y; they differ only in the horizontal axis.
-def _project(name: str, x: np.ndarray, y: np.ndarray, z: np.ndarray):
+def _project(name: str, x: np.ndarray, y: np.ndarray, z: np.ndarray,
+             *, flip_side: bool = False, flip_top: bool = False):
+    """Map a world point to a view's image coords.
+
+    The depth axis is ambiguous across art tools (is the side a left/right view?
+    does the top put the front at image-top or bottom?), so ``flip_side`` /
+    ``flip_top`` toggle each view's depth direction. Defaults: side ``u=z``,
+    top ``v=1-z``.
+    """
     if name == "front":
         return x, 1.0 - y
     if name == "back":
         return 1.0 - x, 1.0 - y
-    if name == "side":            # side profile faces image-right = world +Z (front)
-        return z, 1.0 - y
-    if name == "top":             # looking down: image-up (v=0) = world +Z (front)
-        return x, 1.0 - z
+    if name == "side":
+        return (1.0 - z if flip_side else z), 1.0 - y
+    if name == "top":
+        return x, (z if flip_top else 1.0 - z)
     raise ValueError(f"unknown view {name!r}")
 
 
-def carve_occupancy(cells: list[ViewCell], *, res: int = 64) -> np.ndarray:
+def carve_occupancy(cells: list[ViewCell], *, res: int = 64,
+                    flip_side: bool = False, flip_top: bool = False) -> np.ndarray:
     """Space-carve an ``(res, res, res)`` boolean occupancy from view silhouettes.
 
     A voxel is occupied iff it projects **inside the silhouette of every
@@ -254,7 +263,7 @@ def carve_occupancy(cells: list[ViewCell], *, res: int = 64) -> np.ndarray:
     X, Y, Z = np.meshgrid(coord, coord, coord, indexing="ij")  # each (res,res,res)
 
     for c in used:
-        u, v = _project(c.name, X, Y, Z)
+        u, v = _project(c.name, X, Y, Z, flip_side=flip_side, flip_top=flip_top)
         H, W = c.silhouette.shape
         ui = np.clip((u * W).astype(np.int32), 0, W - 1)
         vi = np.clip((v * H).astype(np.int32), 0, H - 1)
@@ -501,6 +510,8 @@ def image_to_cgb_multiview(
     max_boxes: int = 24,
     voxel_out_path: Optional[str] = None,
     segment_objects: bool = True,
+    flip_side: bool = False,
+    flip_top: bool = False,
 ) -> dict:
     """Reconstruct a ``.cgb`` from a 2x2 multi-view sheet via space carving.
 
@@ -526,7 +537,7 @@ def image_to_cgb_multiview(
     front = next(c for c in cells if c.name == "front")
     used = [c.name for c in cells if not c.blank]
 
-    occ = carve_occupancy(cells, res=res)
+    occ = carve_occupancy(cells, res=res, flip_side=flip_side, flip_top=flip_top)
     if not occ.any():
         raise RuntimeError("Space carving produced an empty volume — check the sheet.")
 
@@ -551,7 +562,7 @@ def image_to_cgb_multiview(
         c = cells_by_name.get(viewname)
         if c is None or c.blank:
             viewname, c = "front", front
-        u, v = _project(viewname, x01, y01, z01)
+        u, v = _project(viewname, x01, y01, z01, flip_side=flip_side, flip_top=flip_top)
         Hc, Wc = c.rgb.shape[:2]
         ui = int(np.clip(u * Wc, 0, Wc - 1))
         vi = int(np.clip(v * Hc, 0, Hc - 1))

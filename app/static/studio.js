@@ -157,6 +157,8 @@ genBtn.addEventListener('click', async () => {
   fd.append('sam_model_type', $('samType').value);
   fd.append('max_segments', $('maxSeg').value);
   fd.append('voxel_res', $('voxelRes').value);
+  fd.append('flip_side', $('flipSide').checked);
+  fd.append('flip_top', $('flipTop').checked);
 
   try {
     const res = await fetch('/api/generate', { method: 'POST', body: fd });
