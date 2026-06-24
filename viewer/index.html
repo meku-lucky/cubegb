@@ -483,6 +483,20 @@ function applyDeform(geom, deform) {
       geom.computeVertexNormals();
     }
   }
+  const shear = deform.shear;
+  if (shear) {
+    const sx = shear[0], sz = shear[1];
+    const pos = geom.attributes.position;
+    let ymin = Infinity;
+    for (let i = 0; i < pos.count; i++) { const y = pos.getY(i); if (y < ymin) ymin = y; }
+    for (let i = 0; i < pos.count; i++) {
+      const d = pos.getY(i) - ymin;
+      pos.setX(i, pos.getX(i) + sx * d);
+      pos.setZ(i, pos.getZ(i) + sz * d);
+    }
+    pos.needsUpdate = true;
+    geom.computeVertexNormals();
+  }
 }
 
 // ---------------------------------------------------------------------------

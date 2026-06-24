@@ -111,6 +111,27 @@ def test_bevel_out_of_range_rejected():
         cgb.validate(doc)
 
 
+def test_shear_leans_top_and_preserves_volume():
+    plain = primitive_to_mesh(cgb.cube("c", [0.3, 1.0, 0.3]))
+    sh = primitive_to_mesh(cgb.cube("c", [0.3, 1.0, 0.3], deform=cgb.shear(0.5, 0.0)))
+    assert sh.is_watertight
+    # shear is volume preserving
+    assert math.isclose(sh.volume, plain.volume, rel_tol=1e-6)
+    v = sh.vertices
+    top = v[v[:, 1] > 0.4]
+    bot = v[v[:, 1] < -0.4]
+    # top shifts by slope*height = 0.5 in x relative to the bottom
+    assert math.isclose(float(top[:, 0].mean() - bot[:, 0].mean()), 0.5, abs_tol=1e-6)
+
+
+def test_all_deforms_compose():
+    mesh = primitive_to_mesh(
+        cgb.cube("c", [0.3, 0.6, 0.3], deform={**cgb.bevel(0.2), **cgb.taper(0.7, 0.7), **cgb.shear(0.3, 0.0)})
+    )
+    assert mesh.is_watertight
+    assert len(mesh.faces) == 44
+
+
 def test_deformed_knight_sample_bakes():
     """The showcase sample loads, validates, and bakes watertight parts."""
     doc = cgb.load("samples/cat_knight_deformed.cgb")

@@ -7,6 +7,12 @@ All notable changes to CubeGB are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Shear deformation** (Deformation & Boolean spec, Priority 2 — completes the
+  deform set): optional `deform.shear` `[x_slope, z_slope]` tilts a primitive
+  along +Y (the +Y end offsets by `slope × height`), volume-preserving — slanted
+  roofs, bases, leaning posts. Shared math across baker and both viewers; the
+  Blender add-on bakes object scale first so the lean stays in real units.
+  `cgb.shear(x, z)` helper, composable with `taper` and `bevel`.
 - **Bevel deformation** (Deformation & Boolean spec, Priority 2): optional
   `deform.bevel` (ratio `0..0.5` of the shortest edge) chamfers a cube's edges
   into a low-poly 44-triangle box (6 faces + 12 edge bevels + 8 corner tris),
