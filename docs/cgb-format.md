@@ -117,6 +117,7 @@ baked mesh.
 |---|---|---|
 | `taper` | `[x_ratio, z_ratio]` | Scale of the cross-section at the **+Y end** relative to the **-Y end** (which stays at `1`), linear in between. Both values must be `> 0`. |
 | `bevel` | `number` `0..0.5` | Chamfer the edges (**cube only** in v1). Cut width is `bevel × shortest_edge`; `0` = sharp, `0.5` = fully rounds the shortest edge. Bakes a low-poly 44-tri chamfered box. |
+| `shear` | `[x_slope, z_slope]` | Tilt along +Y: the **+Y end** is offset by `[x_slope, z_slope] × height` relative to the -Y end (which stays put), linear in between. Slope `1` = 45°. Volume-preserving — slanted roofs, bases, leaning posts. |
 
 ```jsonc
 { "type": "cube", "params": { "size": [0.06, 0.5, 0.024] },
@@ -126,7 +127,8 @@ baked mesh.
   "deform": { "bevel": 0.2 } }           // softened armour plate (chamfered edges)
 ```
 
-`taper` and `bevel` may be combined on one primitive (`{ "taper": [...], "bevel": ... }`).
+`taper`, `bevel`, and `shear` may be combined on one primitive
+(`{ "taper": [...], "bevel": ..., "shear": [...] }`).
 
 `taper` always acts along the local **+Y** axis; to taper along another direction,
 rotate the primitive (e.g. a blade pointing down is tapered then rotated π about
@@ -134,8 +136,8 @@ Z). `[0.2, 1]` pinches a blade to an edge; `[0.7, 0.7]` makes a tapered limb or
 tail segment; `[1.6, 1.6]` flares a column or pot outward. Tapering a cylinder
 gives an exact frustum. See [`samples/cat_knight_deformed.cgb`](../samples/cat_knight_deformed.cgb).
 
-> Roadmap: a `shear` deform, then declarative boolean (CSG) operations, are
-> planned next (see the Deformation & Boolean spec).
+> Roadmap: declarative boolean (CSG) operations are planned next (see the
+> Deformation & Boolean spec).
 
 ## Coordinate & transform conventions
 

@@ -89,6 +89,13 @@
           "description": "Chamfer/round the edges (cube only in v1). Ratio 0..0.5 of the shortest edge; 0 = sharp, 0.5 = fully rounded shortest edge.",
           "minimum": 0,
           "maximum": 0.5
+        },
+        "shear": {
+          "type": "array",
+          "description": "Tilt along +Y: the +Y end is offset by [x_slope, z_slope] * height relative to the -Y end (which stays put), linear along Y. A slope of 1 leans 45 degrees.",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
         }
       }
     },

@@ -321,6 +321,16 @@ def apply_deform(obj, deform):
     if not deform or obj is None or obj.type != 'MESH':
         return
 
+    # Shear is an absolute cross-axis offset, so it must run in real units. A cube
+    # keeps a unit mesh with the size on object scale, so bake that scale into the
+    # mesh first (taper is a ratio and is unaffected; cylinders/cones already have
+    # scale 1). This keeps the lean consistent with the baker and the viewers.
+    if deform.get("shear") and tuple(obj.scale) != (1.0, 1.0, 1.0):
+        sc = obj.scale.copy()
+        for v in obj.data.vertices:
+            v.co = Vector((v.co.x * sc.x, v.co.y * sc.y, v.co.z * sc.z))
+        obj.scale = (1.0, 1.0, 1.0)
+
     taper = deform.get("taper")
     if taper:
         tx, tz = float(taper[0]), float(taper[1])
@@ -334,6 +344,17 @@ def apply_deform(obj, deform):
                     t = (v.co.y - ymin) / h
                     v.co.x *= 1.0 + (tx - 1.0) * t
                     v.co.z *= 1.0 + (tz - 1.0) * t
+
+    shear = deform.get("shear")
+    if shear:
+        sx, sz = float(shear[0]), float(shear[1])
+        verts = obj.data.vertices
+        if verts:
+            ymin = min(v.co.y for v in verts)
+            for v in verts:
+                d = v.co.y - ymin
+                v.co.x += sx * d
+                v.co.z += sz * d
 
     bevel = float(deform.get("bevel") or 0.0)
     if bevel > 0.0:

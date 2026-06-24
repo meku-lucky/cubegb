@@ -123,6 +123,17 @@ def bevel(width: float) -> dict:
     return {"bevel": float(width)}
 
 
+def shear(x_slope: float, z_slope: float) -> dict:
+    """Build a ``deform`` block that tilts the primitive along +Y.
+
+    The +Y end is shifted by ``[x_slope, z_slope] * height`` relative to the -Y
+    end (linear in between). A slope of `1` leans 45°. Use for slanted roofs,
+    bases, or leaning posts. Combine with others via ``{**taper(...),
+    **shear(...)}``.
+    """
+    return {"shear": [float(x_slope), float(z_slope)]}
+
+
 def _primitive(
     prim_id: str,
     prim_type: str,

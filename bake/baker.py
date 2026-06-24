@@ -297,6 +297,18 @@ def _apply_deform(mesh: trimesh.Trimesh, primitive: dict) -> None:
             v[:, 2] *= 1.0 + (tz - 1.0) * t
             mesh.vertices = v  # reassigning invalidates normal caches
 
+    shear = deform.get("shear")
+    if shear:
+        sx, sz = float(shear[0]), float(shear[1])
+        v = mesh.vertices.copy()
+        y = v[:, 1]
+        ymin = float(y.min())
+        # offset grows linearly with height above the -Y end (slope * height).
+        d = y - ymin
+        v[:, 0] += sx * d
+        v[:, 2] += sz * d
+        mesh.vertices = v
+
 
 def _apply_transform(mesh: trimesh.Trimesh, transform: dict) -> trimesh.Trimesh:
     """Apply scale -> rotate (Euler XYZ radians) -> translate, in world space."""
