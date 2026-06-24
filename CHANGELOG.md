@@ -18,6 +18,11 @@ All notable changes to CubeGB are documented here. The format follows
   validation, `samples/keyhole_lock.cgb` (a beveled plate with a drilled
   keyhole + bolt holes), `tests/test_boolean.py`. Adds `manifold3d` to
   requirements.
+- **Showcase sample** `samples/cat_knight_master.cgb` (40 primitives, 3 boolean
+  ops): the cat knight using *every* feature at once — partial-sweep pauldrons,
+  tapered blade/tail/greaves, beveled armour, a carved cross emblem on the
+  shield, a swallowtail notch in the tabard, a pierced belt buckle, and almond
+  cat eyes.
 - **Shear deformation** (Deformation & Boolean spec, Priority 2 — completes the
   deform set): optional `deform.shear` `[x_slope, z_slope]` tilts a primitive
   along +Y (the +Y end offsets by `slope × height`), volume-preserving — slanted
