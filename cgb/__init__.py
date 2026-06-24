@@ -17,6 +17,7 @@ from .io import (
     new_document,
     save,
     sphere,
+    taper,
 )
 from .validate import (
     ValidationError,
@@ -42,6 +43,7 @@ __all__ = [
     "sphere",
     "cylinder",
     "cone",
+    "taper",
     "add_primitive",
     "validate",
     "validate_schema",

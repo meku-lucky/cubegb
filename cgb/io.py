@@ -103,6 +103,16 @@ def make_transform(
     }
 
 
+def taper(x_ratio: float, z_ratio: float) -> dict:
+    """Build a ``deform`` block that tapers the cross-section along +Y.
+
+    The -Y end keeps scale 1; the +Y end is scaled by ``(x_ratio, z_ratio)``,
+    linear in between. ``[0.2, 1]`` narrows a blade to a tip; ``[1.6, 1.6]``
+    flares a column/pot outward.
+    """
+    return {"taper": [float(x_ratio), float(z_ratio)]}
+
+
 def _primitive(
     prim_id: str,
     prim_type: str,
@@ -113,6 +123,7 @@ def _primitive(
     color: Optional[Iterable[float]] = None,
     material_name: Optional[str] = None,
     parent: Optional[str] = None,
+    deform: Optional[dict] = None,
 ) -> dict:
     prim: dict[str, Any] = {
         "id": prim_id,
@@ -122,6 +133,8 @@ def _primitive(
         "params": params,
         "parent": parent,
     }
+    if deform:
+        prim["deform"] = deform
     if color is not None or material_name is not None:
         material: dict[str, Any] = {}
         if color is not None:
@@ -143,26 +156,51 @@ def sphere(prim_id: str, radius: float, segments: int = DEFAULT_SEGMENTS, **kw) 
     )
 
 
+def _add_sweep(
+    params: dict,
+    sweep_start: Optional[float],
+    sweep_end: Optional[float],
+    sweep_caps: Optional[bool],
+) -> None:
+    """Attach optional partial-sweep params (omitted entirely when not used)."""
+    if sweep_start is not None:
+        params["sweep_start"] = float(sweep_start)
+    if sweep_end is not None:
+        params["sweep_end"] = float(sweep_end)
+    if sweep_caps is not None:
+        params["sweep_caps"] = bool(sweep_caps)
+
+
 def cylinder(
-    prim_id: str, radius: float, height: float, segments: int = DEFAULT_SEGMENTS, **kw
+    prim_id: str,
+    radius: float,
+    height: float,
+    segments: int = DEFAULT_SEGMENTS,
+    *,
+    sweep_start: Optional[float] = None,
+    sweep_end: Optional[float] = None,
+    sweep_caps: Optional[bool] = None,
+    **kw,
 ) -> dict:
-    return _primitive(
-        prim_id,
-        "cylinder",
-        {"radius": float(radius), "height": float(height), "segments": int(segments)},
-        **kw,
-    )
+    params = {"radius": float(radius), "height": float(height), "segments": int(segments)}
+    _add_sweep(params, sweep_start, sweep_end, sweep_caps)
+    return _primitive(prim_id, "cylinder", params, **kw)
 
 
 def cone(
-    prim_id: str, radius: float, height: float, segments: int = DEFAULT_SEGMENTS, **kw
+    prim_id: str,
+    radius: float,
+    height: float,
+    segments: int = DEFAULT_SEGMENTS,
+    *,
+    sweep_start: Optional[float] = None,
+    sweep_end: Optional[float] = None,
+    sweep_caps: Optional[bool] = None,
+    **kw,
 ) -> dict:
-    return _primitive(
-        prim_id,
-        "cone",
-        {"radius": float(radius), "height": float(height), "segments": int(segments)},
-        **kw,
-    )
+    params = {"radius": float(radius), "height": float(height), "segments": int(segments)}
+    _add_sweep(params, sweep_start, sweep_end, sweep_caps)
+    return _primitive(prim_id, "cone", params, **kw)
 
 
 def add_primitive(doc: dict, primitive: dict) -> dict:

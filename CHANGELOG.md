@@ -7,6 +7,26 @@ All notable changes to CubeGB are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Taper deformation** (Deformation & Boolean spec, Priority 2 — first deform):
+  an optional per-primitive `deform: { "taper": [x_ratio, z_ratio] }` linearly
+  scales the cross-section along +Y (the -Y end stays at 1), turning a cylinder
+  into a frustum, a box into a wedge, or a thin box into a blade that narrows to a
+  point. The math lives in one place (`bake/baker.py:_apply_deform`) and is mirrored
+  verbatim by both web viewers and the Blender add-on. `cgb.taper(x, z)` builder
+  helper. New `tests/test_deform.py`.
+- **Deform showcase sample** `samples/cat_knight_deformed.cgb`: the hand-authored
+  cat knight rebuilt with the new features — a tapered sword blade tapering to a
+  point, a flared tabard, tapered greaves and tail segments, and curved
+  partial-sweep half-cylinder pauldrons.
+- **Partial sweep for cylinders & cones** (Deformation & Boolean spec, Priority 1):
+  optional `sweep_start` / `sweep_end` (degrees, default `0`–`360`) draw a primitive
+  for only part of a revolution — curved lids, arches, barrels, tunnels — with
+  `sweep_caps` (default `true`) closing the radial cut faces into a solid wedge.
+  Fully backward compatible (omit the params for the unchanged full shape). The
+  arc convention (`x = r·sin θ`, `z = r·cos θ`) is shared verbatim by the baker
+  (`bake/baker.py`), both web viewers, and the Blender add-on so all four agree on
+  the open-arc direction; the baker emits watertight wedges. New
+  `samples/treasure_chest.cgb` (half-cylinder lid) and `tests/test_partial_sweep.py`.
 - **Selective per-object 3D-ification** in Studio: segment the image into parts
   (`POST /api/segment` → thumbnail grid), tick the parts you want, and Generate
   reconstructs **only those** — each part **in isolation** (`image_to_cgb_selected`

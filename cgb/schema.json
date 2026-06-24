@@ -72,6 +72,20 @@
         "name": { "type": "string" }
       }
     },
+    "deform": {
+      "type": "object",
+      "description": "Optional per-primitive shape deformations, applied in local space before the transform.",
+      "additionalProperties": false,
+      "properties": {
+        "taper": {
+          "type": "array",
+          "description": "Cross-section scale at the +Y end relative to the -Y end (which stays 1). [x_ratio, z_ratio], linear along Y. Must be > 0.",
+          "items": { "type": "number", "exclusiveMinimum": 0 },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    },
     "primitive": {
       "type": "object",
       "required": ["id", "type", "transform", "params"],
@@ -85,6 +99,7 @@
         },
         "transform": { "$ref": "#/definitions/transform" },
         "params": { "type": "object" },
+        "deform": { "$ref": "#/definitions/deform" },
         "material": { "$ref": "#/definitions/material" },
         "parent": { "type": ["string", "null"] }
       },
@@ -131,7 +146,10 @@
                 "properties": {
                   "radius": { "type": "number", "exclusiveMinimum": 0 },
                   "height": { "type": "number", "exclusiveMinimum": 0 },
-                  "segments": { "type": "integer", "minimum": 3 }
+                  "segments": { "type": "integer", "minimum": 3 },
+                  "sweep_start": { "type": "number", "minimum": 0, "maximum": 360 },
+                  "sweep_end": { "type": "number", "minimum": 0, "maximum": 360 },
+                  "sweep_caps": { "type": "boolean" }
                 }
               }
             }
@@ -148,7 +166,10 @@
                 "properties": {
                   "radius": { "type": "number", "exclusiveMinimum": 0 },
                   "height": { "type": "number", "exclusiveMinimum": 0 },
-                  "segments": { "type": "integer", "minimum": 3 }
+                  "segments": { "type": "integer", "minimum": 3 },
+                  "sweep_start": { "type": "number", "minimum": 0, "maximum": 360 },
+                  "sweep_end": { "type": "number", "minimum": 0, "maximum": 360 },
+                  "sweep_caps": { "type": "boolean" }
                 }
               }
             }

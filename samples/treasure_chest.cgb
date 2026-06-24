@@ -1,0 +1,201 @@
+{
+  "format": "cgb",
+  "version": "0.1",
+  "metadata": {
+    "generator": "CubeGB partial-sweep demo",
+    "source_image": null,
+    "created_at": "2026-06-24T11:04:54Z",
+    "up_axis": "Y"
+  },
+  "units": "meter",
+  "primitives": [
+    {
+      "id": "body",
+      "name": "body",
+      "type": "cube",
+      "transform": {
+        "position": [
+          0.0,
+          0.35,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "params": {
+        "size": [
+          1.4,
+          0.7,
+          0.9
+        ]
+      },
+      "parent": null,
+      "material": {
+        "color": [
+          0.45,
+          0.3,
+          0.16
+        ],
+        "name": "wood"
+      }
+    },
+    {
+      "id": "lid",
+      "name": "lid",
+      "type": "cylinder",
+      "transform": {
+        "position": [
+          0.0,
+          0.7,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          1.5707963267948966
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "params": {
+        "radius": 0.45,
+        "height": 1.4,
+        "segments": 32,
+        "sweep_start": 0.0,
+        "sweep_end": 180.0,
+        "sweep_caps": true
+      },
+      "parent": null,
+      "material": {
+        "color": [
+          0.38,
+          0.24,
+          0.12
+        ],
+        "name": "wood_dark"
+      }
+    },
+    {
+      "id": "band0",
+      "name": "band0",
+      "type": "cylinder",
+      "transform": {
+        "position": [
+          -0.45,
+          0.7,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          1.5707963267948966
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "params": {
+        "radius": 0.47,
+        "height": 0.06,
+        "segments": 24
+      },
+      "parent": null,
+      "material": {
+        "color": [
+          0.85,
+          0.66,
+          0.2
+        ],
+        "name": "gold"
+      }
+    },
+    {
+      "id": "band1",
+      "name": "band1",
+      "type": "cylinder",
+      "transform": {
+        "position": [
+          0.45,
+          0.7,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          1.5707963267948966
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "params": {
+        "radius": 0.47,
+        "height": 0.06,
+        "segments": 24
+      },
+      "parent": null,
+      "material": {
+        "color": [
+          0.85,
+          0.66,
+          0.2
+        ],
+        "name": "gold"
+      }
+    },
+    {
+      "id": "lock",
+      "name": "lock",
+      "type": "cube",
+      "transform": {
+        "position": [
+          0.0,
+          0.62,
+          0.46
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "params": {
+        "size": [
+          0.16,
+          0.2,
+          0.04
+        ]
+      },
+      "parent": null,
+      "material": {
+        "color": [
+          0.85,
+          0.66,
+          0.2
+        ],
+        "name": "gold"
+      }
+    }
+  ],
+  "operations": []
+}

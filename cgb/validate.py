@@ -48,6 +48,29 @@ def validate_schema(doc: dict) -> None:
         raise ValidationError(f"Schema error at {loc}: {exc.message}") from exc
 
 
+def _validate_params(prim: dict) -> None:
+    """Cross-field parameter checks (ranges the JSON Schema cannot express).
+
+    Currently: partial-sweep angles on cylinder/cone must form a positive span.
+    The per-bound 0..360 range is enforced by the schema; here we require
+    ``sweep_start < sweep_end`` so the swept arc is non-empty.
+    """
+    params = prim.get("params") or {}
+    pid = prim.get("id")
+
+    if prim.get("type") in ("cylinder", "cone"):
+        has_start = "sweep_start" in params
+        has_end = "sweep_end" in params
+        if has_start or has_end:
+            start = float(params.get("sweep_start", 0.0))
+            end = float(params.get("sweep_end", 360.0))
+            if not (end > start):
+                raise ValidationError(
+                    f"Primitive {pid!r}: sweep_end ({end}) must be greater than "
+                    f"sweep_start ({start})."
+                )
+
+
 def validate_semantics(doc: dict) -> None:
     """Check invariants the JSON Schema cannot express.
 
@@ -63,6 +86,10 @@ def validate_semantics(doc: dict) -> None:
         if pid in ids:
             raise ValidationError(f"Duplicate primitive id: {pid!r}")
         ids.add(pid)
+
+    # Parametric range checks the JSON Schema cannot express (cross-field).
+    for prim in primitives:
+        _validate_params(prim)
 
     parent_of: dict[str, Optional[str]] = {}
     for prim in primitives:

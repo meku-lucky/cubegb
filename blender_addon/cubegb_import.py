@@ -55,9 +55,11 @@ primitives parametrically editable downstream.
 """
 
 import json
+import math
 import os
 
 import bpy
+import bmesh
 from mathutils import Euler, Matrix, Vector
 
 
@@ -135,6 +137,97 @@ def get_or_create_material(material_spec):
     return mat
 
 
+_FULL_SWEEP = 360.0
+_SWEEP_EPS = 1e-6
+
+
+def _sweep_params(params):
+    """Return ``(start_rad, length_rad, caps)`` for a *partial* sweep, else None.
+
+    Mirrors ``bake/baker.py:_sweep_params`` so Blender, the baker and the viewer
+    agree on which arc is drawn. ``sweep_caps`` defaults to True.
+    """
+    if "sweep_start" not in params and "sweep_end" not in params:
+        return None
+    start = float(params.get("sweep_start", 0.0))
+    end = float(params.get("sweep_end", _FULL_SWEEP))
+    if abs((end - start) - _FULL_SWEEP) <= _SWEEP_EPS:
+        return None
+    caps = bool(params.get("sweep_caps", True))
+    return math.radians(start), math.radians(end - start), caps
+
+
+def _build_swept_object(name, r_bottom, r_top, height, segments, sweep):
+    """Build a partial cylinder/cone wedge as a `bmesh` object in `.cgb`-local space.
+
+    Blender's ``primitive_cylinder_add`` cannot draw a partial arc, so a swept
+    primitive is built directly. The vertex placement (axis +Y,
+    ``x = r*sin(theta)``, ``z = r*cos(theta)``) matches ``bake/baker.py`` exactly,
+    so the imported wedge has the same shape and open-arc direction as the baked
+    glTF and the web viewer. The mesh is authored in `.cgb` (Y-up) local space and
+    the caller's ``BASIS_YUP_TO_ZUP @ authored`` world matrix converts it to
+    Blender's Z-up frame, consistent with every other primitive.
+
+    Such swept primitives import as plain meshes (not native parametric
+    primitives); a future version can map them to a Screw/▸ modifier for
+    editability.
+    """
+    theta_start, theta_length, caps = sweep
+    n = max(2, int(segments))
+    half = height / 2.0
+
+    bm = bmesh.new()
+    bot, top = [], []
+    for i in range(n + 1):
+        theta = theta_start + (i / n) * theta_length
+        sx, cz = math.sin(theta), math.cos(theta)
+        bot.append(bm.verts.new((r_bottom * sx, -half, r_bottom * cz)))
+        top.append(bm.verts.new((r_top * sx, half, r_top * cz)))
+
+    def face(a, b, c):
+        try:
+            bm.faces.new((a, b, c))
+        except ValueError:
+            pass  # skip duplicate/degenerate (e.g. cone apex)
+
+    for i in range(n):
+        if r_bottom > _SWEEP_EPS:
+            face(bot[i], bot[i + 1], top[i + 1])
+        if r_top > _SWEEP_EPS:
+            face(bot[i], top[i + 1], top[i])
+        if r_bottom <= _SWEEP_EPS and r_top > _SWEEP_EPS:
+            face(bot[i], bot[i + 1], top[i + 1])
+
+    if r_bottom > _SWEEP_EPS:
+        c = bm.verts.new((0.0, -half, 0.0))
+        for i in range(n):
+            face(c, bot[i + 1], bot[i])
+    if r_top > _SWEEP_EPS:
+        c = bm.verts.new((0.0, half, 0.0))
+        for i in range(n):
+            face(c, top[i], top[i + 1])
+
+    if caps:
+        for i, flip in ((0, False), (n, True)):
+            ab = bm.verts.new((0.0, -half, 0.0))
+            at = bm.verts.new((0.0, half, 0.0))
+            quad = [ab, bot[i], top[i], at]
+            if flip:
+                quad = quad[::-1]
+            face(quad[0], quad[1], quad[2])
+            face(quad[0], quad[2], quad[3])
+
+    bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-6)
+    bm.normal_update()
+
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    return obj
+
+
 def add_primitive(prim):
     """Create a native Blender primitive object for one `.cgb` primitive.
 
@@ -171,32 +264,78 @@ def add_primitive(prim):
         radius = float(params.get("radius", 1.0))
         height = float(params.get("height", 1.0))
         segments = int(params.get("segments", 16))
-        # Blender's cylinder axis is +Z by default. `.cgb` cylinders are +Y. The
-        # global Y-up -> Z-up basis change rotates +Y onto +Z, so this Z-axis
-        # cylinder ends up correctly oriented once the world matrix is applied;
-        # no per-shape fix-up is needed here. `depth` == full height, centered.
-        bpy.ops.mesh.primitive_cylinder_add(
-            radius=radius, depth=height, vertices=max(3, segments)
-        )
-        obj = bpy.context.active_object
+        sweep = _sweep_params(params)
+        if sweep is not None:
+            # Partial arc: Blender has no native partial cylinder, so build the
+            # wedge directly (see _build_swept_object). Authored in `.cgb`-local
+            # space so the caller's basis change orients it like every other part.
+            obj = _build_swept_object(
+                prim.get("name") or prim.get("id") or "cylinder",
+                radius, radius, height, max(3, segments), sweep,
+            )
+        else:
+            # Blender's cylinder axis is +Z by default. `.cgb` cylinders are +Y.
+            # The global Y-up -> Z-up basis change rotates +Y onto +Z, so this
+            # Z-axis cylinder ends up correctly oriented once the world matrix is
+            # applied; no per-shape fix-up is needed here. `depth` == full height.
+            bpy.ops.mesh.primitive_cylinder_add(
+                radius=radius, depth=height, vertices=max(3, segments)
+            )
+            obj = bpy.context.active_object
 
     elif ptype == "cone":
         radius = float(params.get("radius", 1.0))
         height = float(params.get("height", 1.0))
         segments = int(params.get("segments", 16))
-        # Like the cylinder, Blender's cone axis is +Z; `.cgb` cones are +Y with
-        # base at y=-h/2 and apex at y=+h/2. The Y-up -> Z-up basis change makes
-        # +Y -> +Z, so the cone points the right way after the world matrix is
-        # applied. radius2=0 gives a pointed apex.
-        bpy.ops.mesh.primitive_cone_add(
-            radius1=radius, radius2=0.0, depth=height, vertices=max(3, segments)
-        )
-        obj = bpy.context.active_object
+        sweep = _sweep_params(params)
+        if sweep is not None:
+            # Cone = swept wedge with the top radius collapsed to the apex.
+            obj = _build_swept_object(
+                prim.get("name") or prim.get("id") or "cone",
+                radius, 0.0, height, max(3, segments), sweep,
+            )
+        else:
+            # Like the cylinder, Blender's cone axis is +Z; `.cgb` cones are +Y
+            # with base at y=-h/2 and apex at y=+h/2. The Y-up -> Z-up basis change
+            # makes +Y -> +Z, so the cone points the right way after the world
+            # matrix is applied. radius2=0 gives a pointed apex.
+            bpy.ops.mesh.primitive_cone_add(
+                radius1=radius, radius2=0.0, depth=height, vertices=max(3, segments)
+            )
+            obj = bpy.context.active_object
 
     else:
         return None
 
     return obj
+
+
+def apply_deform(obj, deform):
+    """Apply local-space deforms (taper along +Y) to an object's mesh in place.
+
+    Mirrors ``bake/baker.py:_apply_deform`` so Blender matches the baked mesh and
+    the viewer. v1 deforms the mesh directly (a tapered primitive is no longer a
+    pristine parametric primitive); a future version can map this to a Simple
+    Deform modifier for editability.
+    """
+    if not deform or obj is None or obj.type != 'MESH':
+        return
+    taper = deform.get("taper")
+    if not taper:
+        return
+    tx, tz = float(taper[0]), float(taper[1])
+    verts = obj.data.vertices
+    if not verts:
+        return
+    ys = [v.co.y for v in verts]
+    ymin, ymax = min(ys), max(ys)
+    h = ymax - ymin
+    if h <= 1e-9:
+        return
+    for v in verts:
+        t = (v.co.y - ymin) / h
+        v.co.x *= 1.0 + (tx - 1.0) * t
+        v.co.z *= 1.0 + (tz - 1.0) * t
 
 
 def import_cgb_document(doc, context, file_label):
@@ -225,6 +364,9 @@ def import_cgb_document(doc, context, file_label):
 
         # Name from `name`, falling back to `id`.
         obj.name = prim.get("name") or prim.get("id") or obj.name
+
+        # Local-space shape deforms (taper) before the world matrix is applied.
+        apply_deform(obj, prim.get("deform"))
 
         # Combine the authored (Y-up) world matrix with the existing object
         # transform that the add-ops/dimensions produced (e.g. the cube's scale

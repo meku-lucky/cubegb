@@ -38,6 +38,66 @@ function voxelColor(out, prim, mode) {
   return out.setRGB(c[0], c[1], c[2]);
 }
 
+// Partial sweep (matches bake/baker.py:_sweep_params). Returns null for a full
+// 0..360 sweep so the native three.js geometry is used unchanged.
+function sweepParams(params) {
+  if (params.sweep_start == null && params.sweep_end == null) return null;
+  const start = (params.sweep_start != null) ? params.sweep_start : 0;
+  const end = (params.sweep_end != null) ? params.sweep_end : 360;
+  if (Math.abs((end - start) - 360) <= 1e-6) return null;
+  const caps = (params.sweep_caps != null) ? !!params.sweep_caps : true;
+  return { start: start * Math.PI / 180, length: (end - start) * Math.PI / 180, caps };
+}
+
+// Hand-built wedge geometry — vertex placement matches bake/baker.py exactly
+// (x = r*sin(theta), z = r*cos(theta), axis +Y) so the viewer and the baked
+// mesh agree on the open arc's direction. A cone is the rTop === 0 case.
+function buildSweptGeometry(rBottom, rTop, height, segments, thetaStart, thetaLength, caps) {
+  const n = Math.max(2, segments | 0);
+  const half = height / 2;
+  const EPS = 1e-6;
+  const pos = [];
+  const idx = [];
+  const bot = [];
+  const top = [];
+  for (let i = 0; i <= n; i++) {
+    const theta = thetaStart + (i / n) * thetaLength;
+    const sx = Math.sin(theta), cz = Math.cos(theta);
+    bot.push(pos.length / 3); pos.push(rBottom * sx, -half, rBottom * cz);
+    top.push(pos.length / 3); pos.push(rTop * sx, half, rTop * cz);
+  }
+  for (let i = 0; i < n; i++) {
+    const b0 = bot[i], b1 = bot[i + 1], t0 = top[i], t1 = top[i + 1];
+    if (rBottom > EPS) idx.push(b0, b1, t1);
+    if (rTop > EPS) idx.push(b0, t1, t0);
+    if (rBottom <= EPS && rTop > EPS) idx.push(b0, b1, t1);
+  }
+  if (rBottom > EPS) {
+    const c = pos.length / 3; pos.push(0, -half, 0);
+    for (let i = 0; i < n; i++) idx.push(c, bot[i + 1], bot[i]);
+  }
+  if (rTop > EPS) {
+    const c = pos.length / 3; pos.push(0, half, 0);
+    for (let i = 0; i < n; i++) idx.push(c, top[i], top[i + 1]);
+  }
+  if (caps) {
+    const ends = [[0, false], [n, true]];
+    for (let e = 0; e < ends.length; e++) {
+      const i = ends[e][0], flip = ends[e][1];
+      const ab = pos.length / 3; pos.push(0, -half, 0);
+      const at = pos.length / 3; pos.push(0, half, 0);
+      let q = [ab, bot[i], top[i], at];
+      if (flip) q = q.slice().reverse();
+      idx.push(q[0], q[1], q[2], q[0], q[2], q[3]);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
 function buildGeometry(type, params) {
   params = params || {};
   const segments = (params.segments != null) ? params.segments : 16;
@@ -53,15 +113,46 @@ function buildGeometry(type, params) {
     case 'cylinder': {
       const r = params.radius != null ? params.radius : 0.5;
       const h = params.height != null ? params.height : 1;
+      const sw = sweepParams(params);
+      if (sw) return buildSweptGeometry(r, r, h, segments, sw.start, sw.length, sw.caps);
       return new THREE.CylinderGeometry(r, r, h, segments);
     }
     case 'cone': {
       const r = params.radius != null ? params.radius : 0.5;
       const h = params.height != null ? params.height : 1;
+      const sw = sweepParams(params);
+      if (sw) return buildSweptGeometry(r, 0, h, segments, sw.start, sw.length, sw.caps);
       return new THREE.ConeGeometry(r, h, segments); // centered, apex +Y
     }
     default:
       throw new Error('Unknown primitive type: "' + type + '"');
+  }
+}
+
+// Local-space shape deform (taper along +Y) — identical formula to
+// bake/baker.py:_apply_deform so the preview matches the baked mesh.
+function applyDeform(geom, deform) {
+  if (!deform) return;
+  const taper = deform.taper;
+  if (taper) {
+    const tx = taper[0], tz = taper[1];
+    const pos = geom.attributes.position;
+    let ymin = Infinity, ymax = -Infinity;
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i);
+      if (y < ymin) ymin = y;
+      if (y > ymax) ymax = y;
+    }
+    const h = ymax - ymin;
+    if (h > 1e-9) {
+      for (let i = 0; i < pos.count; i++) {
+        const t = (pos.getY(i) - ymin) / h;
+        pos.setX(i, pos.getX(i) * (1 + (tx - 1) * t));
+        pos.setZ(i, pos.getZ(i) * (1 + (tz - 1) * t));
+      }
+      pos.needsUpdate = true;
+      geom.computeVertexNormals();
+    }
   }
 }
 
@@ -153,6 +244,7 @@ export class CGBViewer {
 
     doc.primitives.forEach((prim, idx) => {
       const geom = buildGeometry(prim.type, prim.params);
+      applyDeform(geom, prim.deform);
       const colorArr = (prim.material && Array.isArray(prim.material.color))
         ? prim.material.color : DEFAULT_COLOR;
       const color = new THREE.Color(colorArr[0], colorArr[1], colorArr[2]);
