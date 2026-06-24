@@ -67,6 +67,28 @@ CubeGB is built **middle-out**: the downstream tooling (format → viewer → ba
 the AI recognition pipeline simply *fills in* that format. The whole skeleton
 works even when recognition is imperfect.
 
+## Expressiveness: deformation & boolean (beyond plain primitives)
+
+On top of the four base primitives, `.cgb` widens what you can express with a few
+small parameters (all **optional** — omit them and behaviour is 100% unchanged):
+
+- **Partial sweep** — draw a cylinder/cone over a partial angle for curved lids,
+  arches, and curved shoulder plates.
+- **Deformations (`deform`)** — `taper` (narrow to a tip: blades, legs, columns),
+  `bevel` (chamfer edges to soften the blocky tone), `shear` (tilt for slanted
+  roofs/bases).
+- **Boolean / CSG (`operations`)** — `difference` / `union` / `intersection`
+  stored **declaratively** and resolved **once** at bake time with the verified
+  [manifold](https://github.com/elalish/manifold) backend (holes, recesses,
+  engraved emblems — lock holes, through-holes, grooves).
+
+> The deform math is shared verbatim by the baker, both web viewers, and the
+> Blender add-on, so the preview matches the baked mesh. Booleans are never
+> computed per-frame: the viewers just show a difference *cutter* translucent
+> red, and the baker does the real mesh boolean once. Everything together:
+> [`samples/cat_knight_master.cgb`](samples/cat_knight_master.cgb). Full
+> conventions in [the .cgb format doc](docs/cgb-format.md).
+
 ## Repository layout
 
 ```
@@ -78,7 +100,7 @@ cubegb/
 ├── recognition/        # image → .cgb: SAM segmentation, depth, primitive fitting
 ├── app/                # CubeGB Studio — all-in-one web GUI (FastAPI + three.js)
 ├── comfyui_nodes/      # ComfyUI custom nodes
-├── samples/            # hand-authored .cgb examples (chair, table, building)
+├── samples/            # hand-authored .cgb examples (chair/table/building, chest, lock, cat knight)
 ├── tests/              # pytest suite (format + baker)
 └── docs/               # documentation
 ```
