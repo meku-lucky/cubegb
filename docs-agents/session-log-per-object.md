@@ -19,6 +19,14 @@ The full `Deformation & Boolean` dev-request is implemented and on `main`
 - **Open / next:** recognition does **not** emit deforms/booleans yet (authoring
   only). The bigger open question is **how to reach LLM-quality semantic
   blockout** automatically — the hand-authored cat knight is the quality bar.
+- **Direction 1 in progress (existing libraries, no LLM/training):** built
+  `recognition/mesh_fit.py` (dense mesh → primitives bridge) and
+  `recognition/compose.py` (per-part composition **with depth**). Finding:
+  whole-shape abstraction loses semantics → per-part keeps identity. The only
+  missing piece is a **single-image-to-3D model run per part** (didn't install on
+  the Mac/Py3.14 box). **→ Continued on Windows+GPU: see
+  [`HANDOFF-image-to-3d.md`](HANDOFF-image-to-3d.md)** for the full task list,
+  API seam, and acceptance criteria.
 
 ## Update — per-object reconstruction state
 
