@@ -16,6 +16,7 @@ from .io import (
     make_transform,
     new_document,
     save,
+    bevel,
     sphere,
     taper,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "cylinder",
     "cone",
     "taper",
+    "bevel",
     "add_primitive",
     "validate",
     "validate_schema",
