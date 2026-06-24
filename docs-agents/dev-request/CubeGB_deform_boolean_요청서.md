@@ -1,5 +1,12 @@
 # CubeGB `.cgb` 포맷 확장 요청: Deformation & Boolean
 
+> **상태: 전부 구현 완료 ✅** (Priority 1–3). Partial Sweep · taper · bevel · shear ·
+> boolean(difference/union/intersection)이 cgb → bake → viewer(×2) → blender_addon 전
+> 구간에 들어갔고, 하위 호환·테스트 통과. 인식(recognition) 자동 활용은 의도적으로 보류.
+> 규약은 [`docs/cgb-format.md`](../../docs/cgb-format.md), 동작 예시는
+> `samples/{treasure_chest,keyhole_lock,cat_knight_master}.cgb`. 아래는 원본 요청서.
+
+
 현재 `.cgb`는 큐브·실린더·콘·스피어 프리미티브를 `transform`(위치/회전/스케일)으로만
 조합한다. 표현력을 높이기 위해 **deformation(변형)** 과 **boolean(CSG)** 연산을
 추가한다. 아래 우선순위 순으로 검토·구현한다.

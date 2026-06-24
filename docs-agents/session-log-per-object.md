@@ -2,7 +2,25 @@
 
 Agent notes (now committed). Everything below is merged into `main`.
 
-## Update — current state (latest)
+## Update — Deformation & Boolean extension landed (latest)
+
+The full `Deformation & Boolean` dev-request is implemented and on `main`
+(see `docs-agents/dev-request/CubeGB_deform_boolean_요청서.md`, now marked done):
+
+- **Partial sweep** (cylinder/cone), **taper / bevel / shear** deforms, and
+  **boolean CSG** (difference/union/intersection) — all optional & backward
+  compatible. Deform math is shared verbatim across `bake/baker.py` and both web
+  viewers; boolean bakes once via **manifold3d**; Blender maps booleans/bevel to
+  native modifiers.
+- Showcase samples: `treasure_chest.cgb` (sweep), `keyhole_lock.cgb` (boolean),
+  `cat_knight_master.cgb` (everything: sweep + taper + bevel + boolean + eyes).
+- Conventions documented in `docs/cgb-format.md`; tests in `test_partial_sweep`,
+  `test_deform`, `test_boolean`.
+- **Open / next:** recognition does **not** emit deforms/booleans yet (authoring
+  only). The bigger open question is **how to reach LLM-quality semantic
+  blockout** automatically — the hand-authored cat knight is the quality bar.
+
+## Update — per-object reconstruction state
 
 - **Multi-view orientation: SOLVED.** Correct convention is `side u=1-z`, `top v=z`
   (confirmed visually in Studio — eyes front, cape back, sword/tail separate). It

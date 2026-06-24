@@ -37,6 +37,29 @@ If you change anything geometric, the canonical contract is
 Change a convention → update `docs/cgb-format.md` *and* every consumer (viewer,
 baker, Blender add-on, recognition) together, and bump the `.cgb` version.
 
+## Format extensions — deformation & boolean (landed)
+
+Beyond the four primitives, `.cgb` now supports (all **optional / backward
+compatible** — absent ⇒ unchanged). Spec of record:
+`docs-agents/dev-request/CubeGB_deform_boolean_요청서.md`; conventions in
+`docs/cgb-format.md`.
+
+- **Partial sweep** — `sweep_start` / `sweep_end` / `sweep_caps` on `cylinder` /
+  `cone` (degrees; arc convention `x=r·sinθ, z=r·cosθ`, matching three.js).
+- **Deformations** — `deform.taper` `[x,z]` (ratio at +Y end), `deform.bevel`
+  (0..0.5 chamfer, cube only → 44-tri box), `deform.shear` `[x,z]` (lean along Y).
+- **Boolean / CSG** — top-level `operations` (`difference` / `union` /
+  `intersection`; `operands[0]` = target, rest = operands/cutters). Baker resolves
+  it **once** via trimesh's **manifold3d** backend; viewers show difference
+  cutters translucent red (no per-frame subtraction); Blender maps to Boolean
+  modifiers.
+
+**Critical contract:** the deform math lives once in `bake/baker.py`
+(`_apply_deform`, `_partial_swept_mesh`, `_beveled_box_mesh`) and is **mirrored
+vertex-for-vertex** in `app/static/cgb-render.js` *and* `viewer/index.html`. Touch
+one ⇒ touch all three, or the preview and the baked mesh diverge. Recognition does
+not emit these yet (deforms/booleans are authoring-side for now).
+
 ## Repository map (and phase mapping)
 
 | Path | Phase | Notes |
