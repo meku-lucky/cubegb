@@ -214,6 +214,19 @@ function applyDeform(geom, deform) {
   }
 }
 
+// Ids used as difference *cutters* (operands[1..] of a difference op). The viewer
+// shows these semi-transparent red to mark the "to-be-removed" volume; it does
+// NOT actually subtract — the baker performs the real boolean once.
+function collectCutterIds(doc) {
+  const ids = new Set();
+  (doc.operations || []).forEach((op) => {
+    if (op && op.type === 'difference' && Array.isArray(op.operands)) {
+      op.operands.slice(1).forEach((id) => ids.add(id));
+    }
+  });
+  return ids;
+}
+
 export function validateDoc(doc) {
   if (doc == null || typeof doc !== 'object') throw new Error('Not a JSON object.');
   if (doc.format !== 'cgb') {
@@ -299,6 +312,7 @@ export class CGBViewer {
     this.clear();
     const group = new THREE.Group();
     const entries = [];
+    const cutterIds = collectCutterIds(doc);
 
     doc.primitives.forEach((prim, idx) => {
       const geom = buildGeometry(prim.type, prim.params, prim.deform);
@@ -306,7 +320,12 @@ export class CGBViewer {
       const colorArr = (prim.material && Array.isArray(prim.material.color))
         ? prim.material.color : DEFAULT_COLOR;
       const color = new THREE.Color(colorArr[0], colorArr[1], colorArr[2]);
-      const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.05 });
+      const isCutter = cutterIds.has(prim.id);
+      const mat = isCutter
+        ? new THREE.MeshStandardMaterial({
+            color: 0xff3344, roughness: 0.6, metalness: 0.0,
+            transparent: true, opacity: 0.3, depthWrite: false })
+        : new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.05 });
       const mesh = new THREE.Mesh(geom, mat);
       mesh.name = prim.name || prim.id || ('primitive_' + idx);
 

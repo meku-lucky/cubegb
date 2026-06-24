@@ -515,11 +515,24 @@ function validateDoc(doc) {
   }
 }
 
+// Ids used as difference *cutters* — shown semi-transparent red (the viewer marks
+// the volume to be removed but does not subtract; the baker does the real boolean).
+function collectCutterIds(doc) {
+  const ids = new Set();
+  (doc.operations || []).forEach((op) => {
+    if (op && op.type === 'difference' && Array.isArray(op.operands)) {
+      op.operands.slice(1).forEach((id) => ids.add(id));
+    }
+  });
+  return ids;
+}
+
 function buildModel(doc) {
   clearModel();
 
   const newGroup = new THREE.Group();
   const entries = [];
+  const cutterIds = collectCutterIds(doc);
 
   doc.primitives.forEach((prim, idx) => {
     const type = prim.type;
@@ -530,12 +543,16 @@ function buildModel(doc) {
       ? prim.material.color : DEFAULT_COLOR;
     const color = new THREE.Color(colorArr[0], colorArr[1], colorArr[2]);
 
-    const mat = new THREE.MeshStandardMaterial({
-      color: color,
-      roughness: 0.75,
-      metalness: 0.05,
-      flatShading: false
-    });
+    const mat = cutterIds.has(prim.id)
+      ? new THREE.MeshStandardMaterial({
+          color: 0xff3344, roughness: 0.6, metalness: 0.0,
+          transparent: true, opacity: 0.3, depthWrite: false, flatShading: false })
+      : new THREE.MeshStandardMaterial({
+          color: color,
+          roughness: 0.75,
+          metalness: 0.05,
+          flatShading: false
+        });
 
     const mesh = new THREE.Mesh(geom, mat);
     mesh.name = prim.name || prim.id || ('primitive_' + idx);

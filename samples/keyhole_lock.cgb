@@ -1,0 +1,212 @@
+{
+  "format": "cgb",
+  "version": "0.1",
+  "metadata": {
+    "generator": "CubeGB boolean (difference) demo",
+    "source_image": null,
+    "created_at": "2026-06-24T14:01:47Z",
+    "up_axis": "Y"
+  },
+  "units": "meter",
+  "primitives": [
+    {
+      "id": "plate",
+      "name": "plate",
+      "type": "cube",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "params": {
+        "size": [
+          0.5,
+          0.7,
+          0.14
+        ]
+      },
+      "parent": null,
+      "deform": {
+        "bevel": 0.18
+      },
+      "material": {
+        "color": [
+          0.83,
+          0.66,
+          0.32
+        ],
+        "name": "gold"
+      }
+    },
+    {
+      "id": "key_round",
+      "name": "key_round",
+      "type": "cylinder",
+      "transform": {
+        "position": [
+          0.0,
+          0.1,
+          0.0
+        ],
+        "rotation_euler": [
+          1.5707963267948966,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "params": {
+        "radius": 0.09,
+        "height": 0.5,
+        "segments": 24
+      },
+      "parent": null,
+      "material": {
+        "color": [
+          0.2,
+          0.16,
+          0.1
+        ],
+        "name": "hole"
+      }
+    },
+    {
+      "id": "key_slot",
+      "name": "key_slot",
+      "type": "cube",
+      "transform": {
+        "position": [
+          0.0,
+          -0.06,
+          0.0
+        ],
+        "rotation_euler": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "params": {
+        "size": [
+          0.07,
+          0.26,
+          0.5
+        ]
+      },
+      "parent": null,
+      "material": {
+        "color": [
+          0.2,
+          0.16,
+          0.1
+        ],
+        "name": "hole"
+      }
+    },
+    {
+      "id": "bolt_t",
+      "name": "bolt_t",
+      "type": "cylinder",
+      "transform": {
+        "position": [
+          0.0,
+          0.3,
+          0.0
+        ],
+        "rotation_euler": [
+          1.5707963267948966,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "params": {
+        "radius": 0.035,
+        "height": 0.5,
+        "segments": 16
+      },
+      "parent": null,
+      "material": {
+        "color": [
+          0.2,
+          0.16,
+          0.1
+        ],
+        "name": "hole"
+      }
+    },
+    {
+      "id": "bolt_b",
+      "name": "bolt_b",
+      "type": "cylinder",
+      "transform": {
+        "position": [
+          0.0,
+          -0.3,
+          0.0
+        ],
+        "rotation_euler": [
+          1.5707963267948966,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "params": {
+        "radius": 0.035,
+        "height": 0.5,
+        "segments": 16
+      },
+      "parent": null,
+      "material": {
+        "color": [
+          0.2,
+          0.16,
+          0.1
+        ],
+        "name": "hole"
+      }
+    }
+  ],
+  "operations": [
+    {
+      "type": "difference",
+      "operands": [
+        "plate",
+        "key_round",
+        "key_slot",
+        "bolt_t",
+        "bolt_b"
+      ]
+    }
+  ]
+}
