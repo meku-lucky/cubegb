@@ -160,7 +160,12 @@ def primitive_to_mesh(primitive: dict, *, segments_override: Optional[int] = Non
         return max(3, int(params.get("segments", default)))
 
     if ptype == "cube":
-        mesh = trimesh.creation.box(extents=[float(s) for s in params["size"]])
+        size = [float(s) for s in params["size"]]
+        bevel = float((primitive.get("deform") or {}).get("bevel", 0.0))
+        if bevel > 0.0:
+            mesh = _beveled_box_mesh(size, bevel)
+        else:
+            mesh = trimesh.creation.box(extents=size)
 
     elif ptype == "sphere":
         r = float(params["radius"])
@@ -192,6 +197,78 @@ def primitive_to_mesh(primitive: dict, *, segments_override: Optional[int] = Non
         raise ValueError(f"Unknown primitive type: {ptype!r}")
 
     _apply_deform(mesh, primitive)
+    return mesh
+
+
+def _beveled_box_mesh(size, bevel: float) -> trimesh.Trimesh:
+    """A low-poly chamfered box (6 faces + 12 edge bevels + 8 corner tris = 44 tris).
+
+    ``bevel`` is a ratio in (0, 0.5]; the cut width is ``bevel * min(size)`` (so
+    0.5 fully rounds the shortest edge). The same 24-vertex construction is
+    mirrored in the web viewers so the preview matches the baked mesh.
+    """
+    hx, hy, hz = size[0] / 2.0, size[1] / 2.0, size[2] / 2.0
+    r = min(float(bevel), 0.5) * min(size)
+    r = min(r, hx * 0.999, hy * 0.999, hz * 0.999)
+
+    verts: list = []
+    idx: dict = {}
+    for sx in (1, -1):
+        for sy in (1, -1):
+            for sz in (1, -1):
+                idx[(sx, sy, sz, "X")] = len(verts)
+                verts.append([sx * hx, sy * (hy - r), sz * (hz - r)])
+                idx[(sx, sy, sz, "Y")] = len(verts)
+                verts.append([sx * (hx - r), sy * hy, sz * (hz - r)])
+                idx[(sx, sy, sz, "Z")] = len(verts)
+                verts.append([sx * (hx - r), sy * (hy - r), sz * hz])
+
+    faces: list = []
+
+    def quad(a, b, c, d):
+        faces.append([a, b, c])
+        faces.append([a, c, d])
+
+    for sx in (1, -1):
+        quad(idx[(sx, 1, 1, "X")], idx[(sx, 1, -1, "X")], idx[(sx, -1, -1, "X")], idx[(sx, -1, 1, "X")])
+    for sy in (1, -1):
+        quad(idx[(1, sy, 1, "Y")], idx[(1, sy, -1, "Y")], idx[(-1, sy, -1, "Y")], idx[(-1, sy, 1, "Y")])
+    for sz in (1, -1):
+        quad(idx[(1, 1, sz, "Z")], idx[(1, -1, sz, "Z")], idx[(-1, -1, sz, "Z")], idx[(-1, 1, sz, "Z")])
+    for sx in (1, -1):
+        for sy in (1, -1):
+            quad(idx[(sx, sy, 1, "X")], idx[(sx, sy, -1, "X")], idx[(sx, sy, -1, "Y")], idx[(sx, sy, 1, "Y")])
+    for sx in (1, -1):
+        for sz in (1, -1):
+            quad(idx[(sx, 1, sz, "X")], idx[(sx, -1, sz, "X")], idx[(sx, -1, sz, "Z")], idx[(sx, 1, sz, "Z")])
+    for sy in (1, -1):
+        for sz in (1, -1):
+            quad(idx[(1, sy, sz, "Y")], idx[(-1, sy, sz, "Y")], idx[(-1, sy, sz, "Z")], idx[(1, sy, sz, "Z")])
+    for sx in (1, -1):
+        for sy in (1, -1):
+            for sz in (1, -1):
+                faces.append([idx[(sx, sy, sz, "X")], idx[(sx, sy, sz, "Y")], idx[(sx, sy, sz, "Z")]])
+
+    # Orient every face outward. The shape is convex and centered on the origin,
+    # so a face whose normal points away from its own centroid is already
+    # outward; otherwise swap two indices. (Mirrored verbatim in the JS viewers,
+    # which cannot call trimesh.fix_normals.)
+    V = np.asarray(verts, dtype=np.float64)
+    oriented: list = []
+    for a, b, c in faces:
+        n = np.cross(V[b] - V[a], V[c] - V[a])
+        if np.dot(n, V[a] + V[b] + V[c]) < 0.0:
+            oriented.append([a, c, b])
+        else:
+            oriented.append([a, b, c])
+
+    mesh = trimesh.Trimesh(
+        vertices=V,
+        faces=np.asarray(oriented, dtype=np.int64),
+        process=True,
+    )
+    if mesh.is_watertight:
+        mesh.fix_normals()
     return mesh
 
 

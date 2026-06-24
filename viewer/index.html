@@ -381,12 +381,56 @@ function buildSweptGeometry(rBottom, rTop, height, segments, thetaStart, thetaLe
   return g;
 }
 
-function buildGeometry(type, params) {
+// Low-poly chamfered box (24 verts, 44 tris) — mirrors bake/baker.py
+// :_beveled_box_mesh exactly, including the convex outward-winding fix.
+function buildBeveledBox(size, bevelRatio) {
+  const hx = size[0] / 2, hy = size[1] / 2, hz = size[2] / 2;
+  let r = Math.min(bevelRatio, 0.5) * Math.min(size[0], size[1], size[2]);
+  r = Math.min(r, hx * 0.999, hy * 0.999, hz * 0.999);
+  const pos = [];
+  const idx = {};
+  const SS = [1, -1];
+  const key = (sx, sy, sz, a) => sx + ',' + sy + ',' + sz + ',' + a;
+  for (const sx of SS) for (const sy of SS) for (const sz of SS) {
+    idx[key(sx, sy, sz, 'X')] = pos.length / 3; pos.push(sx * hx, sy * (hy - r), sz * (hz - r));
+    idx[key(sx, sy, sz, 'Y')] = pos.length / 3; pos.push(sx * (hx - r), sy * hy, sz * (hz - r));
+    idx[key(sx, sy, sz, 'Z')] = pos.length / 3; pos.push(sx * (hx - r), sy * (hy - r), sz * hz);
+  }
+  const I = (sx, sy, sz, a) => idx[key(sx, sy, sz, a)];
+  const tris = [];
+  const quad = (a, b, c, d) => { tris.push([a, b, c]); tris.push([a, c, d]); };
+  for (const sx of SS) quad(I(sx, 1, 1, 'X'), I(sx, 1, -1, 'X'), I(sx, -1, -1, 'X'), I(sx, -1, 1, 'X'));
+  for (const sy of SS) quad(I(1, sy, 1, 'Y'), I(1, sy, -1, 'Y'), I(-1, sy, -1, 'Y'), I(-1, sy, 1, 'Y'));
+  for (const sz of SS) quad(I(1, 1, sz, 'Z'), I(1, -1, sz, 'Z'), I(-1, -1, sz, 'Z'), I(-1, 1, sz, 'Z'));
+  for (const sx of SS) for (const sy of SS) quad(I(sx, sy, 1, 'X'), I(sx, sy, -1, 'X'), I(sx, sy, -1, 'Y'), I(sx, sy, 1, 'Y'));
+  for (const sx of SS) for (const sz of SS) quad(I(sx, 1, sz, 'X'), I(sx, -1, sz, 'X'), I(sx, -1, sz, 'Z'), I(sx, 1, sz, 'Z'));
+  for (const sy of SS) for (const sz of SS) quad(I(1, sy, sz, 'Y'), I(-1, sy, sz, 'Y'), I(-1, sy, sz, 'Z'), I(1, sy, sz, 'Z'));
+  for (const sx of SS) for (const sy of SS) for (const sz of SS) tris.push([I(sx, sy, sz, 'X'), I(sx, sy, sz, 'Y'), I(sx, sy, sz, 'Z')]);
+  const v = (i) => [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]];
+  const out = [];
+  for (const [a, b, c] of tris) {
+    const A = v(a), B = v(b), C = v(c);
+    const nx = (B[1] - A[1]) * (C[2] - A[2]) - (B[2] - A[2]) * (C[1] - A[1]);
+    const ny = (B[2] - A[2]) * (C[0] - A[0]) - (B[0] - A[0]) * (C[2] - A[2]);
+    const nz = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]);
+    const dot = nx * (A[0] + B[0] + C[0]) + ny * (A[1] + B[1] + C[1]) + nz * (A[2] + B[2] + C[2]);
+    if (dot < 0) out.push(a, c, b); else out.push(a, b, c);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(out);
+  g.computeVertexNormals();
+  return g;
+}
+
+function buildGeometry(type, params, deform) {
   params = params || {};
   const segments = (params.segments != null) ? params.segments : 16;
   switch (type) {
     case 'cube': {
       const s = params.size || [1, 1, 1];
+      const bevel = deform && deform.bevel ? deform.bevel : 0;
+      if (bevel > 0) return buildBeveledBox(s, bevel);
       return new THREE.BoxGeometry(s[0], s[1], s[2]);
     }
     case 'sphere': {
@@ -465,7 +509,7 @@ function buildModel(doc) {
 
   doc.primitives.forEach((prim, idx) => {
     const type = prim.type;
-    const geom = buildGeometry(type, prim.params);
+    const geom = buildGeometry(type, prim.params, prim.deform);
     applyDeform(geom, prim.deform);
 
     const colorArr = (prim.material && Array.isArray(prim.material.color))

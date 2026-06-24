@@ -83,6 +83,12 @@
           "items": { "type": "number", "exclusiveMinimum": 0 },
           "minItems": 2,
           "maxItems": 2
+        },
+        "bevel": {
+          "type": "number",
+          "description": "Chamfer/round the edges (cube only in v1). Ratio 0..0.5 of the shortest edge; 0 = sharp, 0.5 = fully rounded shortest edge.",
+          "minimum": 0,
+          "maximum": 0.5
         }
       }
     },

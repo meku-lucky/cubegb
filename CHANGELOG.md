@@ -7,6 +7,14 @@ All notable changes to CubeGB are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Bevel deformation** (Deformation & Boolean spec, Priority 2): optional
+  `deform.bevel` (ratio `0..0.5` of the shortest edge) chamfers a cube's edges
+  into a low-poly 44-triangle box (6 faces + 12 edge bevels + 8 corner tris),
+  softening the blocky tone. The 24-vertex construction (with a convex
+  outward-winding fix so no `fix_normals` is needed) is shared between the baker
+  and both web viewers; the Blender add-on maps it to a native Bevel modifier.
+  `cgb.bevel(w)` helper, composable with `taper`. The `cat_knight_deformed.cgb`
+  showcase now bevels its armour plates.
 - **Taper deformation** (Deformation & Boolean spec, Priority 2 — first deform):
   an optional per-primitive `deform: { "taper": [x_ratio, z_ratio] }` linearly
   scales the cross-section along +Y (the -Y end stays at 1), turning a cylinder

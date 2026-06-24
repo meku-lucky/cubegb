@@ -320,22 +320,34 @@ def apply_deform(obj, deform):
     """
     if not deform or obj is None or obj.type != 'MESH':
         return
+
     taper = deform.get("taper")
-    if not taper:
-        return
-    tx, tz = float(taper[0]), float(taper[1])
-    verts = obj.data.vertices
-    if not verts:
-        return
-    ys = [v.co.y for v in verts]
-    ymin, ymax = min(ys), max(ys)
-    h = ymax - ymin
-    if h <= 1e-9:
-        return
-    for v in verts:
-        t = (v.co.y - ymin) / h
-        v.co.x *= 1.0 + (tx - 1.0) * t
-        v.co.z *= 1.0 + (tz - 1.0) * t
+    if taper:
+        tx, tz = float(taper[0]), float(taper[1])
+        verts = obj.data.vertices
+        if verts:
+            ys = [v.co.y for v in verts]
+            ymin, ymax = min(ys), max(ys)
+            h = ymax - ymin
+            if h > 1e-9:
+                for v in verts:
+                    t = (v.co.y - ymin) / h
+                    v.co.x *= 1.0 + (tx - 1.0) * t
+                    v.co.z *= 1.0 + (tz - 1.0) * t
+
+    bevel = float(deform.get("bevel") or 0.0)
+    if bevel > 0.0:
+        # Spec mapping: bevel -> Bevel modifier (stays editable). Width is a ratio
+        # of the shortest edge; segments=1 = a chamfer (matches the baker). With a
+        # non-uniform object scale the modifier width is slightly uneven per axis;
+        # a future version can bake scale first for an exactly-uniform chamfer.
+        dims = obj.dimensions
+        shortest = min(dims) if min(dims) > 0 else 1.0
+        mod = obj.modifiers.new(name="cgb_bevel", type='BEVEL')
+        mod.width = min(bevel, 0.5) * shortest
+        mod.segments = 1
+        mod.limit_method = 'ANGLE'
+        mod.angle_limit = 0.7
 
 
 def import_cgb_document(doc, context, file_label):

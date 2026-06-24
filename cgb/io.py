@@ -113,6 +113,16 @@ def taper(x_ratio: float, z_ratio: float) -> dict:
     return {"taper": [float(x_ratio), float(z_ratio)]}
 
 
+def bevel(width: float) -> dict:
+    """Build a ``deform`` block that chamfers/rounds a cube's edges.
+
+    ``width`` is a ratio in ``0..0.5`` of the shortest edge (0 = sharp,
+    0.5 = fully rounded). Combine with :func:`taper` via ``{**taper(...),
+    **bevel(...)}``.
+    """
+    return {"bevel": float(width)}
+
+
 def _primitive(
     prim_id: str,
     prim_type: str,

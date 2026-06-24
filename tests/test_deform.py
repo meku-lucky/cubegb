@@ -80,6 +80,37 @@ def test_nonpositive_taper_rejected():
         cgb.validate(doc)
 
 
+def test_bevel_box_is_low_poly_watertight_and_smaller():
+    plain = primitive_to_mesh(cgb.cube("c", [0.45, 0.4, 0.33]))
+    bev = primitive_to_mesh(cgb.cube("c", [0.45, 0.4, 0.33], deform=cgb.bevel(0.3)))
+    assert bev.is_watertight
+    assert len(bev.faces) == 44  # 6 faces + 12 edge bevels + 8 corner tris
+    assert bev.volume < plain.volume  # corners/edges shaved off
+    # convex + centered: every face normal points outward
+    cent = bev.vertices.mean(axis=0)
+    out = ((bev.triangles_center - cent) * bev.face_normals).sum(axis=1)
+    assert (out > 0).all()
+
+
+def test_bevel_and_taper_compose():
+    mesh = primitive_to_mesh(
+        cgb.cube("c", [0.2, 0.6, 0.2], deform={**cgb.bevel(0.25), **cgb.taper(0.4, 0.4)})
+    )
+    assert mesh.is_watertight
+    # tapered: +Y end narrower than -Y end
+    v = mesh.vertices
+    top = v[v[:, 1] > 0.25]
+    bot = v[v[:, 1] < -0.25]
+    assert float(top[:, 0].max() - top[:, 0].min()) < float(bot[:, 0].max() - bot[:, 0].min())
+
+
+def test_bevel_out_of_range_rejected():
+    doc = cgb.new_document()
+    cgb.add_primitive(doc, cgb.cube("c", [1, 1, 1], deform=cgb.bevel(0.9)))
+    with pytest.raises(cgb.ValidationError):
+        cgb.validate(doc)
+
+
 def test_deformed_knight_sample_bakes():
     """The showcase sample loads, validates, and bakes watertight parts."""
     doc = cgb.load("samples/cat_knight_deformed.cgb")
