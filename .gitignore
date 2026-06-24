@@ -1,11 +1,6 @@
-# ---------------------------------------------------------------------------
-# Agent-only documentation — NOT published to the public repo.
-# (Maintainer owns these lines and may adjust them; see AGENTS.md.)
-# `docs-agents/` is agent-only; `docs/` is published.
-/AGENTS.md
+# Agent docs (AGENTS.md, docs-agents/) ARE committed now — they're shared with
+# other agents for collaboration. Only a local CLAUDE.md (if any) stays private.
 /CLAUDE.md
-/docs-agents/
-# ---------------------------------------------------------------------------
 
 # Python
 __pycache__/

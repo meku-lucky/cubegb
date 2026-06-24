@@ -7,6 +7,12 @@ All notable changes to CubeGB are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Selective per-object 3D-ification** in Studio: segment the image into parts
+  (`POST /api/segment` → thumbnail grid), tick the parts you want, and Generate
+  reconstructs **only those** — each part **in isolation** (`image_to_cgb_selected`
+  → `reconstruct_object` + oriented fit), so a shield comes out a clean disc and a
+  sword a blade instead of being squashed in a shared scene grid. SAM masks are
+  cached so the follow-up generate reuses them (~1 s).
 - **Oriented (OBB) primitive fitting** (`recognition/oriented_fit.py`):
   PCA-align an object to its principal axes, fit/decompose primitives there
   (free to combine several), then inverse-transform each primitive back — so a

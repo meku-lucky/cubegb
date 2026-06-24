@@ -45,6 +45,10 @@ export CUBEGB_DEPTH_CHECKPOINT=/path/to/depth_anything_v2.pth   # optional
    pick a device, and click **생성 (Generate)**. The result loads into the 3D view.
    - No recognition stack installed? Skip generation and click **.cgb 불러오기**
      to view/export an existing `.cgb`.
+   - **부위만 골라 3D화** — click **🔍 부위 세분화** to segment the image into parts
+     (a thumbnail grid). Tick the parts you want (e.g. just the shield) and
+     Generate reconstructs **only those**, each in isolation (a shield → a clean
+     disc). Great for building quality one part at a time.
 3. **3D 뷰 (2×2 디버그 쿼드)** — the viewport shows four synced panels:
    ① carved voxels (multi-view colour), ② final primitives, ③ front-only colour
    (compare with ①), ④ voxels coloured by SAM object group. Orbit (left-drag),
