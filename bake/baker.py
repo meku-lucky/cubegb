@@ -16,6 +16,7 @@ CLI::
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from pathlib import Path
 from typing import Optional
@@ -38,6 +39,111 @@ DEFAULT_COLOR = (0.7, 0.7, 0.72)
 def _align_z_to_y() -> np.ndarray:
     """Rotation mapping +Z (trimesh primitive axis) to +Y (our convention)."""
     return trimesh.transformations.rotation_matrix(-np.pi / 2.0, [1.0, 0.0, 0.0])
+
+
+_FULL_SWEEP = 360.0
+_SWEEP_EPS = 1e-6
+
+
+def _sweep_params(params: dict) -> Optional[tuple]:
+    """Return ``(start_rad, length_rad, caps)`` if a *partial* sweep is requested.
+
+    Returns ``None`` for a full 0..360 sweep so callers keep the existing
+    trimesh full-cylinder/cone path (backward compatible). ``sweep_caps``
+    defaults to ``True`` (a partial primitive bakes as a closed solid wedge).
+    """
+    if "sweep_start" not in params and "sweep_end" not in params:
+        return None
+    start = float(params.get("sweep_start", 0.0))
+    end = float(params.get("sweep_end", _FULL_SWEEP))
+    if abs((end - start) - _FULL_SWEEP) <= _SWEEP_EPS:
+        return None  # full circle — nothing partial to do
+    caps = bool(params.get("sweep_caps", True))
+    return math.radians(start), math.radians(end - start), caps
+
+
+def _partial_swept_mesh(
+    r_bottom: float,
+    r_top: float,
+    height: float,
+    segments: int,
+    theta_start: float,
+    theta_length: float,
+    caps: bool,
+) -> trimesh.Trimesh:
+    """Build a partial cylinder/cone wedge (axis +Y, centered).
+
+    Vertex placement matches three.js ``CylinderGeometry`` exactly
+    (``x = r*sin(theta)``, ``z = r*cos(theta)``) so the baked mesh and the web
+    viewer agree on which direction the open arc faces. A cone is the
+    ``r_top == 0`` case. ``segments`` is the number of radial facets across the
+    arc (same as the viewer's ``radialSegments``).
+    """
+    n = max(2, int(segments))
+    half = height / 2.0
+    verts: list[list[float]] = []
+    bot_ring: list[int] = []
+    top_ring: list[int] = []
+
+    for i in range(n + 1):
+        theta = theta_start + (i / n) * theta_length
+        sx, cz = math.sin(theta), math.cos(theta)
+        bot_ring.append(len(verts))
+        verts.append([r_bottom * sx, -half, r_bottom * cz])
+        top_ring.append(len(verts))
+        verts.append([r_top * sx, half, r_top * cz])
+
+    faces: list[list[int]] = []
+    # Curved side surface (outward winding).
+    for i in range(n):
+        b0, b1 = bot_ring[i], bot_ring[i + 1]
+        t0, t1 = top_ring[i], top_ring[i + 1]
+        if r_bottom > _SWEEP_EPS:
+            faces.append([b0, b1, t1])
+        if r_top > _SWEEP_EPS:
+            faces.append([b0, t1, t0])
+        if r_bottom <= _SWEEP_EPS and r_top > _SWEEP_EPS:
+            faces.append([b0, b1, t1])  # cone tip fan (b0 == apex projection)
+
+    # Axial caps (the circular-sector ends along the +Y axis).
+    if r_bottom > _SWEEP_EPS:
+        c = len(verts)
+        verts.append([0.0, -half, 0.0])
+        for i in range(n):
+            faces.append([c, bot_ring[i + 1], bot_ring[i]])  # faces -Y
+    if r_top > _SWEEP_EPS:
+        c = len(verts)
+        verts.append([0.0, half, 0.0])
+        for i in range(n):
+            faces.append([c, top_ring[i], top_ring[i + 1]])  # faces +Y
+
+    # Radial end caps (the two flat cuts) — close the cross-section when asked.
+    if caps:
+        for i, flip in ((0, False), (n, True)):
+            ax_b = len(verts)
+            verts.append([0.0, -half, 0.0])
+            ax_t = len(verts)
+            verts.append([0.0, half, 0.0])
+            rb, rt = bot_ring[i], top_ring[i]
+            quad = [ax_b, rb, rt, ax_t]
+            if flip:
+                quad = quad[::-1]
+            faces.append([quad[0], quad[1], quad[2]])
+            faces.append([quad[0], quad[2], quad[3]])
+
+    mesh = trimesh.Trimesh(
+        vertices=np.asarray(verts, dtype=np.float64),
+        faces=np.asarray(faces, dtype=np.int64),
+        process=True,
+    )
+    # A cone's apex collapses its top ring to one point, so radial-cap quads
+    # degenerate to triangles; drop the zero-area faces so the wedge stays a
+    # clean manifold (else watertight checks and booleans choke on them).
+    mesh.update_faces(mesh.nondegenerate_faces())
+    mesh.remove_unreferenced_vertices()
+    if caps and mesh.is_watertight:
+        mesh.fix_normals()
+    return mesh
 
 
 def primitive_to_mesh(primitive: dict, *, segments_override: Optional[int] = None) -> trimesh.Trimesh:
@@ -63,20 +169,56 @@ def primitive_to_mesh(primitive: dict, *, segments_override: Optional[int] = Non
 
     elif ptype == "cylinder":
         r, h = float(params["radius"]), float(params["height"])
-        mesh = trimesh.creation.cylinder(radius=r, height=h, sections=seg())
-        mesh.apply_transform(_align_z_to_y())
+        sweep = _sweep_params(params)
+        if sweep is not None:
+            mesh = _partial_swept_mesh(r, r, h, seg(), *sweep)
+        else:
+            mesh = trimesh.creation.cylinder(radius=r, height=h, sections=seg())
+            mesh.apply_transform(_align_z_to_y())
 
     elif ptype == "cone":
         r, h = float(params["radius"]), float(params["height"])
-        mesh = trimesh.creation.cone(radius=r, height=h, sections=seg())
-        # trimesh cone: base at z=0, apex at z=h. Center on the origin first.
-        mesh.apply_translation([0.0, 0.0, -h / 2.0])
-        mesh.apply_transform(_align_z_to_y())
+        sweep = _sweep_params(params)
+        if sweep is not None:
+            # Cone = swept wedge with the top radius collapsed to the apex.
+            mesh = _partial_swept_mesh(r, 0.0, h, seg(), *sweep)
+        else:
+            mesh = trimesh.creation.cone(radius=r, height=h, sections=seg())
+            # trimesh cone: base at z=0, apex at z=h. Center on the origin first.
+            mesh.apply_translation([0.0, 0.0, -h / 2.0])
+            mesh.apply_transform(_align_z_to_y())
 
     else:
         raise ValueError(f"Unknown primitive type: {ptype!r}")
 
+    _apply_deform(mesh, primitive)
     return mesh
+
+
+def _apply_deform(mesh: trimesh.Trimesh, primitive: dict) -> None:
+    """Apply local-space shape deformations (currently: taper along +Y).
+
+    Operates on the centered local mesh *before* the primitive transform. The
+    taper math is intentionally tiny and lives here as the single source of
+    truth; the web viewer (``cgb-render.js`` / ``viewer/index.html``) implements
+    the identical formula so the preview and the baked mesh agree.
+    """
+    deform = primitive.get("deform")
+    if not deform:
+        return
+
+    taper = deform.get("taper")
+    if taper:
+        tx, tz = float(taper[0]), float(taper[1])
+        v = mesh.vertices.copy()
+        y = v[:, 1]
+        ymin, ymax = float(y.min()), float(y.max())
+        h = ymax - ymin
+        if h > 1e-9:
+            t = (y - ymin) / h  # 0 at the -Y end, 1 at the +Y end
+            v[:, 0] *= 1.0 + (tx - 1.0) * t
+            v[:, 2] *= 1.0 + (tz - 1.0) * t
+            mesh.vertices = v  # reassigning invalidates normal caches
 
 
 def _apply_transform(mesh: trimesh.Trimesh, transform: dict) -> trimesh.Trimesh:

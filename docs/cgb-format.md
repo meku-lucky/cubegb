@@ -78,10 +78,60 @@ follow so their output matches.
 `segments` defaults to `16` if omitted. Keep it low — low-poly blockout is the
 goal.
 
+#### Partial sweep (`cylinder` / `cone`)
+
+Cylinders and cones may be drawn for only part of a full revolution — a curved
+lid, an arch, a barrel, a tunnel half. Three optional `params` control it:
+
+| Param | Default | Meaning |
+|---|---|---|
+| `sweep_start` | `0` | Arc start angle, **degrees** (`0`–`360`). |
+| `sweep_end` | `360` | Arc end angle, **degrees** (`0`–`360`). Must be `> sweep_start`. |
+| `sweep_caps` | `true` | When the arc is partial, also close the two flat radial cut faces, making a solid wedge. `false` leaves an open shell. |
+
+The angle is measured so that `0°` faces **+Z** and increases toward **+X**
+(`x = r·sin θ`, `z = r·cos θ`) — the same convention three.js
+`CylinderGeometry`/`ConeGeometry` use for `thetaStart`/`thetaLength`, so the web
+viewer, the baked mesh, and the Blender import all agree on which way the arc
+opens. `segments` is the number of radial facets **across the arc** (so a `0`–`180`
+half-cylinder at `segments: 16` is smoother than a full cylinder at the same
+count). A half-cylinder lid is `sweep_start: 0, sweep_end: 180`; a quarter wedge
+is `0`–`90`. Omitting both `sweep_start` and `sweep_end` (or `0`–`360`) is a full
+revolution, byte-for-byte identical to the legacy behaviour. See
+[`samples/treasure_chest.cgb`](../samples/treasure_chest.cgb).
+
 > **Encode dimensions in `params`, not `scale`.** Prefer keeping
 > `transform.scale = [1, 1, 1]` and putting size into `params` (e.g. a thicker
 > seat is a larger `size[1]`, not a `y` scale). This keeps the primitive clean
 > and editable downstream. Non-uniform `scale` is *allowed* but discouraged.
+
+### Deformations (`deform`)
+
+A primitive may carry an optional `deform` object (sibling of `params`) describing
+local-space shape deformations applied **before** the transform. They keep the
+`.cgb` parametric and tiny — no vertex lists — and every consumer (baker, both web
+viewers, Blender add-on) implements the identical math so the preview matches the
+baked mesh.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `taper` | `[x_ratio, z_ratio]` | Scale of the cross-section at the **+Y end** relative to the **-Y end** (which stays at `1`), linear in between. Both values must be `> 0`. |
+
+```jsonc
+{ "type": "cube", "params": { "size": [0.06, 0.5, 0.024] },
+  "deform": { "taper": [0.12, 0.5] } }   // a blade: narrows to a tip toward +Y
+```
+
+`taper` always acts along the local **+Y** axis; to taper along another direction,
+rotate the primitive (e.g. a blade pointing down is tapered then rotated π about
+Z). `[0.2, 1]` pinches a blade to an edge; `[0.7, 0.7]` makes a tapered limb or
+tail segment; `[1.6, 1.6]` flares a column or pot outward. Tapering a cylinder
+gives an exact frustum. See [`samples/cat_knight_deformed.cgb`](../samples/cat_knight_deformed.cgb).
+
+> Roadmap: `bevel` and `shear` deforms, then declarative boolean (CSG) operations,
+> are planned next (see the Deformation & Boolean spec). Curvature-producing
+> deforms will subdivide the baked mesh; `taper` is linear so it needs no extra
+> segments.
 
 ## Coordinate & transform conventions
 
