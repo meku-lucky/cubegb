@@ -112,6 +112,23 @@ def validate_semantics(doc: dict) -> None:
             seen.add(node)
             node = parent_of.get(node)
 
+    # CSG operations: every operand must reference an existing primitive id.
+    for i, op in enumerate(doc.get("operations", [])):
+        operands = op.get("operands", [])
+        if len(operands) < 2:
+            raise ValidationError(
+                f"Operation {i} ({op.get('type')!r}) needs at least 2 operands"
+            )
+        for operand in operands:
+            if operand not in ids:
+                raise ValidationError(
+                    f"Operation {i} references unknown primitive id {operand!r}"
+                )
+        if operands[0] in operands[1:]:
+            raise ValidationError(
+                f"Operation {i}: target {operands[0]!r} cannot also be an operand"
+            )
+
 
 def validate(doc: dict, *, schema: bool = True, semantics: bool = True) -> None:
     """Full validation. Raises :class:`ValidationError` on the first failure."""

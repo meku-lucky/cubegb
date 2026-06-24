@@ -14,9 +14,17 @@ SAMPLES = sorted((Path(__file__).resolve().parents[1] / "samples").glob("*.cgb")
 def test_scene_has_named_node_per_primitive(path):
     doc = cgb.load(path)
     scene = bake_scene(doc)
-    # One geometry per primitive, keyed by primitive id (named, separable).
-    assert len(scene.geometry) == len(doc["primitives"])
-    for prim in doc["primitives"]:
+    # Operands consumed by a boolean (e.g. difference cutters) are not emitted as
+    # separate geometry, so exclude them from the expected node set.
+    consumed = set()
+    for op in doc.get("operations", []) or []:
+        operands = op.get("operands", [])
+        if len(operands) >= 2:
+            consumed.update(o for o in operands[1:] if o != operands[0])
+    expected = [p for p in doc["primitives"] if p["id"] not in consumed]
+    # One geometry per surviving primitive, keyed by primitive id (named, separable).
+    assert len(scene.geometry) == len(expected)
+    for prim in expected:
         assert prim["id"] in scene.graph.nodes_geometry or prim["id"] in scene.geometry
 
 

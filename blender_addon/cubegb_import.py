@@ -439,6 +439,27 @@ def import_cgb_document(doc, context, file_label):
             obj.parent = root
             obj.matrix_parent_inverse = root.matrix_world.inverted()
 
+    # Third pass: CSG operations -> native Boolean modifiers (stays editable). The
+    # target keeps a modifier per operand; operand objects become wireframe
+    # helpers hidden from render (the spec's "cutter" mapping).
+    op_kind = {"difference": 'DIFFERENCE', "union": 'UNION', "intersection": 'INTERSECT'}
+    for op in doc.get("operations") or []:
+        operands = op.get("operands") or []
+        if len(operands) < 2:
+            continue
+        target = objects_by_id.get(operands[0])
+        if target is None:
+            continue
+        for operand_id in operands[1:]:
+            cutter = objects_by_id.get(operand_id)
+            if cutter is None or cutter is target:
+                continue
+            mod = target.modifiers.new(name="cgb_bool_%s" % operand_id, type='BOOLEAN')
+            mod.operation = op_kind.get(op.get("type"), 'DIFFERENCE')
+            mod.object = cutter
+            cutter.display_type = 'WIRE'
+            cutter.hide_render = True
+
     return objects_by_id, root
 
 

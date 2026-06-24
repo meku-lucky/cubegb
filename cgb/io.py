@@ -228,3 +228,40 @@ def add_primitive(doc: dict, primitive: dict) -> dict:
     """Append a primitive to ``doc['primitives']`` and return the primitive."""
     doc.setdefault("primitives", []).append(primitive)
     return primitive
+
+
+# --------------------------------------------------------------------------- #
+# Boolean / CSG operations (declarative; the baker computes the real mesh)
+# --------------------------------------------------------------------------- #
+def operation(op_type: str, target_id: str, *operand_ids: str, name: Optional[str] = None) -> dict:
+    """Build a CSG operation. ``target_id`` is the result; the rest are operands.
+
+    For ``difference`` the extra operands are *cutters* subtracted from the
+    target. The referenced primitives stay in ``primitives`` (the cutter carries
+    its own geometry/transform); the baker resolves the boolean once.
+    """
+    op: dict[str, Any] = {"type": op_type, "operands": [target_id, *operand_ids]}
+    if name is not None:
+        op["name"] = name
+    return op
+
+
+def difference(target_id: str, *cutter_ids: str, **kw) -> dict:
+    """A ``difference`` op: subtract ``cutter_ids`` from ``target_id``."""
+    return operation("difference", target_id, *cutter_ids, **kw)
+
+
+def union(target_id: str, *other_ids: str, **kw) -> dict:
+    """A ``union`` op: merge ``other_ids`` into ``target_id``."""
+    return operation("union", target_id, *other_ids, **kw)
+
+
+def intersection(target_id: str, *other_ids: str, **kw) -> dict:
+    """An ``intersection`` op: keep only the overlap of all operands."""
+    return operation("intersection", target_id, *other_ids, **kw)
+
+
+def add_operation(doc: dict, op: dict) -> dict:
+    """Append a CSG operation to ``doc['operations']`` and return it."""
+    doc.setdefault("operations", []).append(op)
+    return op

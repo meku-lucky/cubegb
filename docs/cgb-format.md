@@ -136,8 +136,37 @@ Z). `[0.2, 1]` pinches a blade to an edge; `[0.7, 0.7]` makes a tapered limb or
 tail segment; `[1.6, 1.6]` flares a column or pot outward. Tapering a cylinder
 gives an exact frustum. See [`samples/cat_knight_deformed.cgb`](../samples/cat_knight_deformed.cgb).
 
-> Roadmap: declarative boolean (CSG) operations are planned next (see the
-> Deformation & Boolean spec).
+## Boolean operations (CSG)
+
+The top-level `operations` array holds **declarative** CSG. Each op references
+primitive ids; the `.cgb` stays small and parametric, and the real mesh boolean
+is computed **once at bake time** (never per-frame in the viewer).
+
+```jsonc
+"operations": [
+  { "type": "difference", "operands": ["plate", "keyhole", "bolt_hole"] }
+]
+```
+
+- `type` — `difference`, `union`, or `intersection`.
+- `operands` — primitive ids. **`operands[0]` is the result/target**; the rest are
+  the other operands. For `difference` they are *cutters* subtracted from the
+  target (holes, recesses, grooves — lock holes, through-holes, drawer grooves).
+
+How each consumer handles it:
+
+| Consumer | Behaviour |
+|---|---|
+| **Baker** (`bake/baker.py`) | Computes the real mesh boolean once with the verified [manifold3d](https://github.com/elalish/manifold) backend (robust to coplanar/near-touching faces). The result keeps the target's node + material; consumed operands are not emitted. |
+| **Web viewers** | Do **not** subtract (slow/unstable per-frame). A difference *cutter* is drawn **semi-transparent red** to mark the volume that will be removed. |
+| **Blender add-on** | Maps each operand to a native **Boolean modifier** on the target (stays editable); cutter objects become hidden wireframe helpers. |
+
+The operand primitives stay in `primitives` (a cutter carries its own
+geometry/transform). Booleans compose with deforms — e.g. a beveled plate minus a
+cylinder. See [`samples/keyhole_lock.cgb`](../samples/keyhole_lock.cgb).
+
+> Baking booleans needs the `manifold3d` package (in `requirements.txt`). Without
+> it the baker logs a warning and leaves the target uncut rather than failing.
 
 ## Coordinate & transform conventions
 

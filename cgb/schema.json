@@ -34,7 +34,7 @@
     },
     "operations": {
       "type": "array",
-      "description": "CSG operations (union/difference/intersection). Empty in v0.1 (unimplemented).",
+      "description": "Declarative CSG. Each op references primitive ids; the baker computes the real mesh boolean once. operands[0] is the result/target, operands[1..] are the other operands (cutters for difference).",
       "items": { "$ref": "#/definitions/operation" }
     }
   },
@@ -201,8 +201,11 @@
         },
         "operands": {
           "type": "array",
-          "items": { "type": "string" }
-        }
+          "description": "Primitive ids. operands[0] is the result/target; operands[1..] are the other operands (cutters for difference).",
+          "items": { "type": "string" },
+          "minItems": 2
+        },
+        "name": { "type": "string" }
       }
     }
   }

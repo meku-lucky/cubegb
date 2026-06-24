@@ -7,6 +7,17 @@ All notable changes to CubeGB are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Boolean / CSG operations** (Deformation & Boolean spec, Priority 3): the
+  top-level `operations` array is now live — `difference` / `union` /
+  `intersection`, stored **declaratively** (`operands[0]` is the target, the rest
+  are operands/cutters). The baker resolves the real mesh boolean **once** with
+  the verified manifold3d backend (robust to coplanar faces) and drops consumed
+  cutters; the web viewers draw difference cutters **semi-transparent red**
+  without subtracting; the Blender add-on maps each to a native Boolean modifier.
+  `cgb.difference/union/intersection/operation/add_operation` helpers, operand
+  validation, `samples/keyhole_lock.cgb` (a beveled plate with a drilled
+  keyhole + bolt holes), `tests/test_boolean.py`. Adds `manifold3d` to
+  requirements.
 - **Shear deformation** (Deformation & Boolean spec, Priority 2 — completes the
   deform set): optional `deform.shear` `[x_slope, z_slope]` tilts a primitive
   along +Y (the +Y end offsets by `slope × height`), volume-preserving — slanted

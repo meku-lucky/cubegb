@@ -332,6 +332,42 @@ def _apply_color(mesh: trimesh.Trimesh, primitive: dict) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Boolean / CSG (computed once at bake time with a verified library: manifold3d)
+# --------------------------------------------------------------------------- #
+def _world_mesh(prim: dict, segments_override: Optional[int]) -> trimesh.Trimesh:
+    """Build a primitive's mesh in world space (local geometry + its transform)."""
+    mesh = primitive_to_mesh(prim, segments_override=segments_override)
+    _apply_transform(mesh, prim.get("transform", {}))
+    return mesh
+
+
+def _apply_boolean(op_type: str, target: trimesh.Trimesh, others: list) -> trimesh.Trimesh:
+    """Resolve one CSG op. ``difference`` subtracts ``others`` from ``target``.
+
+    Uses trimesh's boolean (manifold3d backend) which is robust to coplanar and
+    near-touching faces. On any failure the target is returned unchanged so a
+    bake never crashes on a tricky boolean.
+    """
+    others = [m for m in others if m is not None and len(m.faces)]
+    if not others:
+        return target
+    try:
+        if op_type == "difference":
+            return trimesh.boolean.difference([target, *others])
+        if op_type == "union":
+            return trimesh.boolean.union([target, *others])
+        if op_type == "intersection":
+            return trimesh.boolean.intersection([target, *others])
+    except Exception as exc:  # noqa: BLE001 - never let a boolean abort the bake
+        print(
+            f"warning: boolean {op_type!r} failed ({exc}); using target unchanged. "
+            f"Install the boolean backend with `pip install manifold3d`.",
+            file=sys.stderr,
+        )
+    return target
+
+
+# --------------------------------------------------------------------------- #
 # Scene assembly
 # --------------------------------------------------------------------------- #
 def bake_scene(doc: dict, *, segments_override: Optional[int] = None) -> trimesh.Scene:
@@ -339,13 +375,38 @@ def bake_scene(doc: dict, *, segments_override: Optional[int] = None) -> trimesh
 
     Each primitive is added as a separately named node so parts stay editable in
     downstream tools. Positions are world-space (v0.1 hierarchy is logical only).
+    Declarative ``operations`` (CSG) are resolved here, once: the result keeps the
+    target primitive's node/material and the consumed operands (e.g. difference
+    cutters) are not emitted as separate geometry.
     """
     scene = trimesh.Scene()
     used: dict[str, int] = {}
 
+    prims = {p["id"]: p for p in doc.get("primitives", [])}
+    op_by_result: dict[str, dict] = {}
+    consumed: set[str] = set()
+    for op in doc.get("operations", []) or []:
+        operands = op.get("operands", [])
+        if len(operands) < 2:
+            continue
+        op_by_result[operands[0]] = op
+        consumed.update(operands[1:])
+
     for prim in doc.get("primitives", []):
-        mesh = primitive_to_mesh(prim, segments_override=segments_override)
-        _apply_transform(mesh, prim.get("transform", {}))
+        pid = prim["id"]
+        # A pure operand (cutter) is consumed by the boolean — don't render it.
+        if pid in consumed and pid not in op_by_result:
+            continue
+
+        mesh = _world_mesh(prim, segments_override)
+        if pid in op_by_result:
+            op = op_by_result[pid]
+            others = [
+                _world_mesh(prims[o], segments_override)
+                for o in op["operands"][1:]
+                if o in prims
+            ]
+            mesh = _apply_boolean(op.get("type", "difference"), mesh, others)
         _apply_color(mesh, prim)
 
         # Node names must be unique in the scene graph; ids already are, but a
