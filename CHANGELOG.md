@@ -7,6 +7,17 @@ All notable changes to CubeGB are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Image-to-3D abstraction bridge** (`recognition/mesh_fit.py`): turn a dense mesh
+  from any single-image-to-3D model (TripoSR / InstantMesh / TRELLIS / ...) into
+  editable CubeGB primitives — mesh → voxel occupancy → existing primitive fitting
+  → `.cgb`. Model-agnostic (feed any `.glb`/`.obj`), with per-primitive colour and
+  a CLI. The model is a swappable front-end; no LLM dependency.
+- **Per-part composition with depth** (`recognition/compose.py`): keep part
+  identity that whole-shape abstraction loses — each part contributes occupancy +
+  2D position + relative depth + colour, fitted and placed in a shared frame.
+  Adds **per-part z (depth)** placement (the piece that kept earlier multi-part
+  scenes flat). `compose_parts`, `part_from_silhouette`, `part_from_mesh` (bridge
+  per part), and `image_to_cgb_composed` (SAM + Depth Anything).
 - **Boolean / CSG operations** (Deformation & Boolean spec, Priority 3): the
   top-level `operations` array is now live — `difference` / `union` /
   `intersection`, stored **declaratively** (`operands[0]` is the target, the rest
